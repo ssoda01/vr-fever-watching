@@ -403,7 +403,7 @@ const prepareDrawerAssets = async (
   return { profile: resolvedProfile, timeline: resolvedTimeline };
 };
 
-export const buildTimelineHtml = (
+const buildWeiboCardHtml = (
   profile: ProfileData,
   normalizedTimeline: ResolvedMediaPost[],
 ) => {
@@ -453,24 +453,37 @@ export const buildTimelineHtml = (
     })
     .join("");
 
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <style>
+  return `<div class="weibo-card">
+    <div class="cover">
+      ${cover ? `<img class="cover-image" src="${escapeHtml(cover)}" alt="" />` : ""}
+    </div>
+    <div class="profile">
+      <img class="avatar" src="${escapeHtml(avatar)}" alt="" />
+      <div class="profile-info">
+        <div class="name">${escapeHtml(user.screen_name || "微博用户")}</div>
+        <div class="desc">${escapeHtml(user.description || "暂无简介")}</div>
+        <div class="location">${escapeHtml(user.location || "")}</div>
+      </div>
+    </div>
+    <div class="stats">
+      <span><strong>${escapeHtml(user.followers_count_str || "0")}</strong>粉丝</span>
+      <span><strong>${user.friends_count ?? 0}</strong>关注</span>
+      <span><strong>${user.statuses_count ?? normalizedTimeline.length}</strong>微博</span>
+    </div>
+    <div class="timeline">
+      <div class="timeline-title">最近动态</div>
+      ${posts || '<div class="post"><div class="post-text">暂无微博</div></div>'}
+    </div>
+  </div>`;
+};
+
+const TIMELINE_PAGE_STYLES = `
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
       background: #f3f4f6;
       padding: 24px;
       color: #1f2328;
-    }
-    #weibo-card {
-      width: 640px;
-      background: #fff;
-      border-radius: 18px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(31, 35, 40, 0.08);
     }
     .cover {
       width: 100%;
@@ -692,34 +705,46 @@ export const buildTimelineHtml = (
       font-size: 12px;
       color: #8b949e;
     }
-  </style>
+    #weibo-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      width: 640px;
+    }
+    .weibo-card,
+    #weibo-card {
+      width: 640px;
+      background: #fff;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(31, 35, 40, 0.08);
+    }
+`;
+
+const wrapTimelinePage = (bodyContent: string) => `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>${TIMELINE_PAGE_STYLES}</style>
 </head>
 <body>
-  <div id="weibo-card">
-    <div class="cover">
-      ${cover ? `<img class="cover-image" src="${escapeHtml(cover)}" alt="" />` : ""}
-    </div>
-    <div class="profile">
-      <img class="avatar" src="${escapeHtml(avatar)}" alt="" />
-      <div class="profile-info">
-        <div class="name">${escapeHtml(user.screen_name || "微博用户")}</div>
-        <div class="desc">${escapeHtml(user.description || "暂无简介")}</div>
-        <div class="location">${escapeHtml(user.location || "")}</div>
-      </div>
-    </div>
-    <div class="stats">
-      <span><strong>${escapeHtml(user.followers_count_str || "0")}</strong>粉丝</span>
-      <span><strong>${user.friends_count ?? 0}</strong>关注</span>
-      <span><strong>${user.statuses_count ?? normalizedTimeline.length}</strong>微博</span>
-    </div>
-    <div class="timeline">
-      <div class="timeline-title">最近动态</div>
-      ${posts || '<div class="post"><div class="post-text">暂无微博</div></div>'}
-    </div>
-  </div>
+  ${bodyContent}
 </body>
 </html>`;
-};
+
+export const buildTimelineHtml = (
+  profile: ProfileData,
+  normalizedTimeline: ResolvedMediaPost[],
+) => wrapTimelinePage(buildWeiboCardHtml(profile, normalizedTimeline));
+
+export const buildMultiTimelineHtml = (
+  entries: { profile: ProfileData; timeline: ResolvedMediaPost[] }[],
+) =>
+  wrapTimelinePage(
+    `<div id="weibo-cards">${entries
+      .map(({ profile, timeline }) => buildWeiboCardHtml(profile, timeline))
+      .join("")}</div>`,
+  );
 
 const waitForImages = async (page: any, timeoutMs: number) => {
   await page.evaluate((timeout) => {
@@ -736,6 +761,11 @@ const waitForImages = async (page: any, timeoutMs: number) => {
   }, timeoutMs);
 };
 
+export type TimelineEntry = {
+  profile: ProfileData;
+  timeline: NormalizedPost[];
+};
+
 export const drawTimeline = async (
   ctx: Context,
   profile: ProfileData,
@@ -747,7 +777,31 @@ export const drawTimeline = async (
   const html = buildTimelineHtml(resolvedProfile, resolvedTimeline);
   return ctx.puppeteer.render(html, async (page, next) => {
     await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
-    const card = await page.$("#weibo-card");
+    const card = await page.$(".weibo-card");
     return next(card || undefined);
+  });
+};
+
+export const drawTimelines = async (
+  ctx: Context,
+  entries: TimelineEntry[],
+) => {
+  if (!entries.length) return null;
+  if (entries.length === 1) {
+    return drawTimeline(ctx, entries[0].profile, entries[0].timeline);
+  }
+
+  await ensurePuppeteerBrowser(ctx);
+  const resolvedEntries = [];
+  for (const entry of entries) {
+    resolvedEntries.push(
+      await prepareDrawerAssets(ctx, entry.profile, entry.timeline),
+    );
+  }
+  const html = buildMultiTimelineHtml(resolvedEntries);
+  return ctx.puppeteer.render(html, async (page, next) => {
+    await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
+    const cards = await page.$("#weibo-cards");
+    return next(cards || undefined);
   });
 };

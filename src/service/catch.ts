@@ -12,7 +12,7 @@ const USER_AGENT =
 const getWeiboByUID = async (
   weiboUID: string,
   ctx: Context,
-  _session: Session,
+  _session?: Session,
 ) => {
   const cookies = await loadCookiesFromDatabase(ctx);
   const xsrfToken = getXsrfTokenFromCookies(cookies);
