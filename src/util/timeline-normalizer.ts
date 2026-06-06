@@ -73,7 +73,7 @@ export interface NormalizedPostPageInfo {
   page_pic?: string;
 }
 
-/** 预览用缩略图，体积更小、加载更快 */
+/** 缩略图，仅用于对清晰度要求不高的场景 */
 export const getThumbPicUrlFromInfo = (picInfo?: WeiboPicInfo): string =>
   picInfo?.bmiddle?.url ||
   picInfo?.large?.url ||
@@ -81,8 +81,13 @@ export const getThumbPicUrlFromInfo = (picInfo?: WeiboPicInfo): string =>
   picInfo?.largest?.url ||
   "";
 
+/** 渲染用高清图：优先 largest / original / large */
 export const getPicUrlFromInfo = (picInfo?: WeiboPicInfo): string =>
-  getThumbPicUrlFromInfo(picInfo);
+  picInfo?.largest?.url ||
+  picInfo?.original?.url ||
+  picInfo?.large?.url ||
+  picInfo?.bmiddle?.url ||
+  "";
 
 export const getPostPicUrls = (
   picIds: string[] | undefined,
@@ -91,16 +96,14 @@ export const getPostPicUrls = (
 ): string[] =>
   (picIds || [])
     .slice(0, limit)
-    .map((picId) => getThumbPicUrlFromInfo(picInfos?.[picId]))
+    .map((picId) => getPicUrlFromInfo(picInfos?.[picId]))
     .filter(Boolean);
 
-export const countPostPics = (
-  picIds: string[] | undefined,
-): number => (picIds || []).length;
+export const countPostPics = (picIds: string[] | undefined): number =>
+  (picIds || []).length;
 
-export const getPageCoverUrl = (
-  pageInfo?: NormalizedPostPageInfo,
-): string => pageInfo?.page_pic || pageInfo?.page_icon || "";
+export const getPageCoverUrl = (pageInfo?: NormalizedPostPageInfo): string =>
+  pageInfo?.page_pic || pageInfo?.page_icon || "";
 
 export type ActivityType = "original" | "retweet" | "like";
 
@@ -265,12 +268,8 @@ export const normalizeLikeList = (likeList: any): NormalizedPost[] => {
     )
     .filter((time: number | null): time is number => time !== null);
 
-  const rangeMin = createdTimes.length
-    ? Math.min(...createdTimes)
-    : Date.now();
-  const rangeMax = createdTimes.length
-    ? Math.max(...createdTimes)
-    : rangeMin;
+  const rangeMin = createdTimes.length ? Math.min(...createdTimes) : Date.now();
+  const rangeMax = createdTimes.length ? Math.max(...createdTimes) : rangeMin;
 
   return list.map((post: any, index: number) => {
     const createdAtTime =

@@ -452,12 +452,11 @@ const buildWeiboCardHtml = (
       `;
     })
     .join("");
-
   return `<div class="weibo-card">
-    <div class="cover">
-      ${cover ? `<img class="cover-image" src="${escapeHtml(cover)}" alt="" />` : ""}
-    </div>
-    <div class="profile">
+  <div class="cover">
+    ${cover ? `<img class="cover-image" src="${escapeHtml(cover)}" alt="" />` : ""}
+  </div>
+  <div class="profile">
       <img class="avatar" src="${escapeHtml(avatar)}" alt="" />
       <div class="profile-info">
         <div class="name">${escapeHtml(user.screen_name || "微博用户")}</div>
@@ -486,11 +485,18 @@ const TIMELINE_PAGE_STYLES = `
       color: #1f2328;
     }
     .cover {
+      height: 100px;
+      overflow:hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       width: 100%;
       line-height: 0;
       background: linear-gradient(135deg, #ff8a65 0%, #ff6a9b 45%, #7a5cff 100%);
     }
     .cover-image {
+      object-fit: cover;
+      object-position: center;
       display: block;
       width: 100%;
       max-width: 100%;
@@ -709,11 +715,11 @@ const TIMELINE_PAGE_STYLES = `
       display: flex;
       flex-direction: column;
       gap: 24px;
-      width: 640px;
+      width: ${CONSTANTS.RENDER_CARD_WIDTH}px;
     }
     .weibo-card,
     #weibo-card {
-      width: 640px;
+      width: ${CONSTANTS.RENDER_CARD_WIDTH}px;
       background: #fff;
       border-radius: 18px;
       overflow: hidden;
@@ -782,10 +788,7 @@ export const drawTimeline = async (
   });
 };
 
-export const drawTimelines = async (
-  ctx: Context,
-  entries: TimelineEntry[],
-) => {
+export const drawTimelines = async (ctx: Context, entries: TimelineEntry[]) => {
   if (!entries.length) return null;
   if (entries.length === 1) {
     return drawTimeline(ctx, entries[0].profile, entries[0].timeline);

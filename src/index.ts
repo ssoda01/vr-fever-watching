@@ -21,6 +21,7 @@ import {
   drawTimelines,
   type TimelineEntry,
 } from "./service/drawer";
+import { getWaitMs } from "./util/timer";
 // import * as forward from "koishi-plugin-forward";
 
 export const name = "weibo-monitor-multi";
@@ -111,6 +112,7 @@ export async function apply(ctx: Context, config: Config) {
 
   const pollWeibo = async () => {
     log.info("定时器开始");
+
     const groups = await ctx.database
       .select("weibo_subscribes")
       .where({ isActive: true })
@@ -122,7 +124,7 @@ export async function apply(ctx: Context, config: Config) {
       .execute();
 
     const weiboUIDs = [...new Set(groups.flatMap((group) => group.weiboUIDs))];
-    log.info("这一轮将发送的 weiboUIDs: %j", weiboUIDs);
+    // log.info("这一轮将发送的 weiboUIDs: %j", weiboUIDs);
     if (!weiboUIDs.length) {
       return;
     }
@@ -137,7 +139,7 @@ export async function apply(ctx: Context, config: Config) {
         }
         const normalizedTimeline = filterTimelineWithinMinutes(
           mergeActivityTimeline(result.timeline, result.like, weiboUID),
-          CONSTANTS.TIME_SCOPE_MINUTES,
+          config.waitMinutes,
         );
         entryByUID.set(
           weiboUID,
@@ -152,7 +154,7 @@ export async function apply(ctx: Context, config: Config) {
       const session = sendMsgOnebot(group.groupID);
       const entries = [...new Set(group.weiboUIDs)]
         .map((weiboUID) => entryByUID.get(weiboUID))
-        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+        .filter((entry): entry is TimelineEntry => entry != null);
 
       if (!entries.length) {
         continue;
@@ -168,8 +170,7 @@ export async function apply(ctx: Context, config: Config) {
       }
     }
   };
-
-  ctx.setInterval(pollWeibo, config.waitMinutes * 60 * 1000);
+  ctx.setInterval(pollWeibo, getWaitMs(config.waitMinutes));
 
   if (!ctx.puppeteer.browser?.connected) {
     await ctx.puppeteer.start();
@@ -183,6 +184,26 @@ export async function apply(ctx: Context, config: Config) {
         return "please install puppeteer plugin";
       }
       // argv.session.sendQueued("订阅成功");
+      if (message === "查看") {
+        const groupID = (argv.session?.channel as unknown as Channel)
+          .id as string;
+        const subscribes = await ctx.database
+          .select("weibo_subscribes")
+          .where({
+            groupID: groupID,
+          })
+          .execute();
+        if (!subscribes) {
+          return argv.session.sendQueued("未找到订阅");
+        }
+        let msg = ["当前订阅的UID:"];
+        Array.from(subscribes).forEach((subscribe) => {
+          msg.push(
+            `- UID: ${subscribe.weiboUID} ${subscribe.isActive ? "活跃中" : "已关闭"} (https://weibo.com/u/${subscribe.weiboUID})`,
+          );
+        });
+        return argv.session.sendQueued(msg.join("\n"));
+      }
       if (message === "订阅") {
         const weiboUID = options;
         const groupID = (argv.session?.channel as unknown as Channel)
@@ -190,25 +211,27 @@ export async function apply(ctx: Context, config: Config) {
         if (!groupID) {
           return argv.session.sendQueued("未找到群ID");
         }
-        await ctx.database.upsert("weibo_subscribes", (row) => {
-          return [
-            {
-              id: `${row.weiboUID}-${row.groupID}`,
-              weiboUID,
-              groupID,
-              isActive: true,
-              createdAt: new Date(),
-            },
-          ];
-        });
-        const bot = ctx.bots[`onebot:${config.adminAccount}`];
-        if (!bot) {
-          return argv.session.sendQueued(
-            `未找到机器人实例: onebot:${config.adminAccount}`,
-          );
+        // 检查是否有订阅过相同的
+        const beforeSubscribe = await ctx.database
+          .select("weibo_subscribes")
+          .where({
+            weiboUID: weiboUID,
+            groupID: groupID,
+          })
+          .execute();
+        if (beforeSubscribe.length > 0) {
+          return argv.session.sendQueued("已订阅，无需重复订阅");
         }
-        bot.sendMessage(groupID, `订阅成功: ${weiboUID}`);
-        return argv.session.sendQueued("订阅成功");
+        await ctx.database.create("weibo_subscribes", {
+          id: `${weiboUID}-${groupID}`,
+          weiboUID,
+          groupID,
+          isActive: true,
+          createdAt: new Date(),
+        });
+
+        const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
+        return bot.sendMessage(groupID, `订阅成功: ${weiboUID}`);
       }
       if (message === "help") {
         sendMsg(
@@ -258,29 +281,30 @@ export async function apply(ctx: Context, config: Config) {
       }
       if (message === "draw") {
         try {
-          await ensurePuppeteerBrowser(ctx);
-          const result = await getWeiboByUID(
-            CONSTANTS.WEIBO_SAMPLE_UID,
-            ctx,
-            argv.session,
-          );
-          if (!result?.profile || !result?.timeline) {
-            return argv.session.sendQueued("未找到微博数据");
-          }
-          const normalizedTimeline = filterTimelineWithinMinutes(
-            mergeActivityTimeline(
-              result.timeline,
-              result.like,
-              CONSTANTS.WEIBO_SAMPLE_UID,
-            ),
-            CONSTANTS.TIME_SCOPE_MINUTES,
-          );
-          const image = await drawTimeline(
-            ctx,
-            result.profile,
-            normalizedTimeline,
-          );
-          return argv.session.sendQueued(image);
+          await pollWeibo();
+          //   await ensurePuppeteerBrowser(ctx);
+          //   const result = await getWeiboByUID(
+          //     CONSTANTS.WEIBO_SAMPLE_UID,
+          //     ctx,
+          //     argv.session,
+          //   );
+          //   if (!result?.profile || !result?.timeline) {
+          //     return argv.session.sendQueued("未找到微博数据");
+          //   }
+          //   const normalizedTimeline = filterTimelineWithinMinutes(
+          //     mergeActivityTimeline(
+          //       result.timeline,
+          //       result.like,
+          //       CONSTANTS.WEIBO_SAMPLE_UID,
+          //     ),
+          //     CONSTANTS.TIME_SCOPE_MINUTES,
+          //   );
+          //   const image = await drawTimeline(
+          //     ctx,
+          //     result.profile,
+          //     normalizedTimeline,
+          //   );
+          //   return argv.session.sendQueued(image);
         } catch (error: any) {
           return argv.session.sendQueued(formatPuppeteerError(error));
         }

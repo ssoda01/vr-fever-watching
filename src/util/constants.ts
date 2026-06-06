@@ -13,6 +13,8 @@ const IMAGE_FETCH_DELAY_MS = 500;
 const MAX_POST_IMAGES = 30;
 const MAX_TIMELINE_IMAGES = 30;
 const IMAGE_LOAD_TIMEOUT_MS = 5000;
+/** 微博截图 HTML 卡片宽度（px） */
+const RENDER_CARD_WIDTH = 320;
 
 export const CONSTANTS = {
   WEIBO_PASSPORT_URL,
@@ -24,6 +26,7 @@ export const CONSTANTS = {
   MAX_POST_IMAGES,
   MAX_TIMELINE_IMAGES,
   IMAGE_LOAD_TIMEOUT_MS,
+  RENDER_CARD_WIDTH,
 };
 
 const IS_QRPIC = "^https?:\/\/[^/]*qr[^/]*\.(com|cn)";
