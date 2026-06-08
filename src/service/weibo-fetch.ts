@@ -1,11 +1,8 @@
 import { Context, Session } from "koishi";
 import { writeFile } from "node:fs/promises";
-import { CONSTANTS } from "../util/constants";
-import {
-  getXsrfTokenFromCookies,
-  loadCookieStringFromDatabase,
-  loadCookiesFromDatabase,
-} from "../util/puppeteer-cookie";
+import { normalizeComments } from "./comment/normalizer";
+import type { WeiboCommentsResult } from "./comment/types";
+import { createWeiboHttp } from "./weibo-http";
 
 /** 拉取指定 UID 的微博主页、时间线与点赞列表 */
 export const getWeiboByUID = async (
@@ -13,26 +10,13 @@ export const getWeiboByUID = async (
   ctx: Context,
   _session?: Session,
 ) => {
-  const cookies = await loadCookiesFromDatabase(ctx);
-  const xsrfToken = getXsrfTokenFromCookies(cookies);
-  const cookieString = await loadCookieStringFromDatabase(ctx);
-
-  if (!xsrfToken || !cookieString) {
+  const weiboHttp = await createWeiboHttp(
+    ctx,
+    `https://weibo.com/u/${weiboUID}`,
+  );
+  if (!weiboHttp) {
     return null;
   }
-
-  const weiboHttp = ctx.http.extend({
-    endpoint: "https://weibo.com",
-    headers: {
-      accept: "application/json, text/plain, */*",
-      "accept-language": "zh-CN,zh;q=0.9",
-      "x-requested-with": "XMLHttpRequest",
-      "x-xsrf-token": xsrfToken,
-      cookie: cookieString,
-      referer: `https://weibo.com/u/${weiboUID}`,
-      "user-agent": CONSTANTS.USER_AGENT,
-    },
-  });
 
   const profile = await weiboHttp
     .get(`/ajax/profile/info?uid=${weiboUID}&scene=profile`)
@@ -53,4 +37,59 @@ export const getWeiboByUID = async (
   ]);
 
   return { profile, timeline, like };
+};
+
+export interface GetWeiboCommentsOptions {
+  count?: number;
+  maxId?: string;
+}
+
+/** 拉取指定微博（原创/转发）的评论列表 */
+export const getWeiboCommentsByWeiboID = async (
+  weiboID: string,
+  weiboUID: string,
+  ctx: Context,
+  options: GetWeiboCommentsOptions = {},
+): Promise<WeiboCommentsResult | null> => {
+  const count = options.count ?? 20;
+  const weiboHttp = await createWeiboHttp(
+    ctx,
+    `https://weibo.com/${weiboUID}/${weiboID}`,
+  );
+  if (!weiboHttp) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    is_reload: "1",
+    id: weiboID,
+    is_show_bulletin: "2",
+    is_mix: "0",
+    count: String(count),
+    type: "feed",
+    uid: weiboUID,
+    fetch_level: "0",
+    locale: "zh-CN",
+  });
+  if (options.maxId) {
+    params.set("max_id", options.maxId);
+  }
+
+  const response = await weiboHttp
+    .get(`/ajax/statuses/buildComments?${params.toString()}`)
+    .then((res: any) => res ?? null);
+
+  if (!response) {
+    return null;
+  }
+
+  const comments = normalizeComments(response);
+  const maxId = response?.max_id;
+  const total = response?.total_number ?? comments.length;
+
+  return {
+    comments,
+    total: Number(total) || comments.length,
+    maxId: maxId != null ? String(maxId) : null,
+  };
 };

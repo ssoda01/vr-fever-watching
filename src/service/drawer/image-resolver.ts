@@ -7,9 +7,11 @@ import {
   getPostPicUrls,
 } from "../../util/weibo-media";
 import type { NormalizedPost } from "../timeline/types";
+import type { NormalizedComment } from "../comment/types";
 import type {
   ImageBudget,
   ProfileData,
+  ResolvedComment,
   ResolvedMediaPost,
 } from "./types";
 
@@ -220,9 +222,41 @@ export const prepareDrawerAssets = async (
       profileReferer,
     );
 
+    const resolveCommentTree = async (
+      comments: NormalizedComment[],
+    ): Promise<ResolvedComment[]> =>
+      Promise.all(
+        comments.map(async (comment) => {
+          const commentUser = comment.user || {};
+          const commentAvatar =
+            commentUser.avatar_large ||
+            commentUser.profile_image_url ||
+            postAvatar;
+          const replies = comment.replies?.length
+            ? await resolveCommentTree(comment.replies)
+            : undefined;
+          return {
+            ...comment,
+            resolvedAvatar: await resolveImageUrl(
+              ctx,
+              commentAvatar,
+              cookieString,
+              cache,
+              profileReferer,
+            ),
+            replies,
+          };
+        }),
+      );
+
+    const resolvedComments = post.comments?.length
+      ? await resolveCommentTree(post.comments)
+      : undefined;
+
     resolvedTimeline.push({
       ...post,
       ...postMedia,
+      comments: resolvedComments,
       user: {
         ...postUser,
         avatar_large: postAvatarResolved,

@@ -1,3 +1,5 @@
+import type { NormalizedComment } from "../comment/types";
+
 export interface WeiboPicInfo {
   large?: { url?: string };
   bmiddle?: { url?: string };
@@ -20,7 +22,11 @@ export interface NormalizedPostPageInfo {
 }
 
 export type ActivityType = "original" | "retweet" | "like";
-
+export enum EActivityType {
+  original = "original",
+  retweet = "retweet",
+  like = "like",
+}
 export interface NormalizedRetweetedPost {
   text: string;
   createdAt: string;
@@ -59,4 +65,5 @@ export interface NormalizedPost {
   page_info?: NormalizedPostPageInfo;
   pic_ids?: string[];
   pic_infos?: WeiboPicInfos;
+  comments?: NormalizedComment[];
 }

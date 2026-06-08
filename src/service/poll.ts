@@ -1,6 +1,7 @@
 import { $, Context } from "koishi";
 import { drawTimelines, type TimelineEntry } from "./drawer";
 import { filterTimelineWithinMinutes, mergeActivityTimeline } from "./timeline";
+import { attachCommentsToEntries } from "./comment/fetch-for-timeline";
 import { getWeiboByUID } from "./weibo-fetch";
 import { formatPuppeteerError } from "../util/puppeteer-cookie";
 import type { Config } from "../index";
@@ -71,6 +72,7 @@ export const createPollWeibo = (
         );
       }),
     );
+    await attachCommentsToEntries(ctx, entryByUID, config.waitMinutes);
 
     for (const group of groups) {
       const session = sendMsgOnebot(group.groupID);

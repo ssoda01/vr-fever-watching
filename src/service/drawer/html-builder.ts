@@ -2,7 +2,7 @@ import { CONSTANTS } from "../../util/constants";
 import { escapeHtml } from "../../util/html";
 import { formatWeiboDate } from "../../util/weibo-date";
 import type { ActivityType, NormalizedPost, NormalizedRetweetedPost } from "../timeline/types";
-import type { ProfileData, ResolvedMediaPost } from "./types";
+import type { ProfileData, ResolvedComment, ResolvedMediaPost } from "./types";
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
   original: "最近原创",
@@ -90,6 +90,56 @@ const buildQuotedPost = (
   </div>`;
 };
 
+const buildCommentItem = (
+  comment: ResolvedComment,
+  fallbackAvatar: string,
+  nested = false,
+) => {
+  const user = comment.user || {};
+  const avatar =
+    comment.resolvedAvatar ||
+    user.avatar_large ||
+    user.profile_image_url ||
+    fallbackAvatar;
+  const likes =
+    comment.likesCount && comment.likesCount > 0
+      ? `<span class="comment-likes">👍 ${comment.likesCount}</span>`
+      : "";
+  const authorBadge = comment.isAuthor
+    ? `<span class="comment-author">博主</span>`
+    : "";
+  const replies = comment.replies?.length
+    ? `<div class="comment-replies">${comment.replies
+        .map((reply) => buildCommentItem(reply, fallbackAvatar, true))
+        .join("")}</div>`
+    : "";
+
+  return `<div class="comment-item${nested ? " comment-item--reply" : ""}">
+    <img class="comment-avatar" src="${escapeHtml(avatar)}" alt="" />
+    <div class="comment-body">
+      <div class="comment-meta">
+        <span class="comment-name">${escapeHtml(user.screen_name || "微博用户")}</span>
+        ${authorBadge}
+        <span class="comment-time">${escapeHtml(comment.createdAtText || comment.createdAt || "")}</span>
+        ${likes}
+      </div>
+      <div class="comment-text">${formatPostText(comment.text)}</div>
+      ${replies}
+    </div>
+  </div>`;
+};
+
+const buildPostComments = (
+  comments: ResolvedComment[] | undefined,
+  fallbackAvatar: string,
+) => {
+  if (!comments?.length) return "";
+  return `<div class="post-comments">
+    <div class="post-comments__title">最新评论</div>
+    ${comments.map((comment) => buildCommentItem(comment, fallbackAvatar)).join("")}
+  </div>`;
+};
+
 const buildActivityBadge = (post: NormalizedPost) => {
   const label = ACTIVITY_LABELS[post.activityType];
   if (!label) return "";
@@ -147,6 +197,7 @@ const buildWeiboCardHtml = (
             <span>评论 ${post.comments_count ?? 0}</span>
             <span>赞 ${post.attitudes_count ?? 0}</span>
           </div>
+          ${buildPostComments(post.comments, postAvatar)}
         </article>
       `;
     })
@@ -409,6 +460,75 @@ const TIMELINE_PAGE_STYLES = `
       gap: 16px;
       font-size: 12px;
       color: #8b949e;
+    }
+    .post-comments {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f2f5;
+    }
+    .post-comments__title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #57606a;
+      margin-bottom: 8px;
+    }
+    .comment-item {
+      display: flex;
+      gap: 8px;
+      padding: 8px 0;
+    }
+    .comment-item + .comment-item {
+      border-top: 1px solid #f6f8fa;
+    }
+    .comment-item--reply {
+      padding-top: 6px;
+    }
+    .comment-replies {
+      margin-top: 8px;
+      padding-left: 10px;
+      border-left: 2px solid #e6e8eb;
+    }
+    .comment-author {
+      font-size: 10px;
+      font-weight: 700;
+      color: #db2777;
+      background: #fdf2f8;
+      border-radius: 999px;
+      padding: 1px 6px;
+    }
+    .comment-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .comment-body {
+      min-width: 0;
+      flex: 1;
+    }
+    .comment-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 4px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .comment-name {
+      font-weight: 700;
+      color: #57606a;
+    }
+    .comment-likes {
+      margin-left: auto;
+    }
+    .comment-text {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1f2328;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
     #weibo-cards {
       display: flex;

@@ -1,3 +1,4 @@
+import type { NormalizedComment } from "../comment/types";
 import type {
   NormalizedPost,
   NormalizedPostPageInfo,
@@ -22,10 +23,15 @@ export interface ProfileData {
   };
 }
 
+export type ResolvedComment = NormalizedComment & {
+  resolvedAvatar?: string;
+};
+
 export type ResolvedMediaPost = NormalizedPost & {
   resolvedImages?: string[];
   hiddenImageCount?: number;
   resolvedMediaCover?: string;
+  comments?: ResolvedComment[];
   retweeted?: NormalizedRetweetedPost & {
     resolvedImages?: string[];
     hiddenImageCount?: number;

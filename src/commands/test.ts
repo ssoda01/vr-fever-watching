@@ -5,7 +5,11 @@ import {
   filterTimelineWithinMinutes,
   mergeActivityTimeline,
 } from "../service/timeline";
-import { getWeiboByUID } from "../service/weibo-fetch";
+import { formatCommentsMessages } from "../service/comment/formatter";
+import {
+  getWeiboByUID,
+  getWeiboCommentsByWeiboID,
+} from "../service/weibo-fetch";
 import { CONSTANTS, REGEX } from "../util/constants";
 import {
   ensurePuppeteerBrowser,
@@ -113,7 +117,7 @@ export const registerTestCommand = (
 
     if (message === "help") {
       sendMsg(
-        "help: 帮助\rlogin: 登录\rcookie: 获取cookie\rcatch: 获取微博数据\rdraw: 绘制微博卡片",
+        "help: 帮助\rlogin: 登录\rcookie: 获取cookie\rcatch: 获取微博数据\rcomments: 获取微博评论\rdraw: 绘制微博卡片",
         argv.session,
       );
     }
@@ -154,6 +158,32 @@ export const registerTestCommand = (
           CONSTANTS.TIME_SCOPE_MINUTES,
         );
         return argv.session.sendQueued(JSON.stringify({ normalizedTimeline }));
+      } catch (error: any) {
+        return argv.session.sendQueued(error.message);
+      }
+    }
+
+    if (message === "comments") {
+      try {
+        let [, weiboUID, weiboID] = argv.args;
+        weiboUID = weiboUID?.trim();
+        weiboID = weiboID?.trim();
+        if (
+          !weiboUID ||
+          !REGEX.IS_WEIBO_UID.test(weiboUID) ||
+          !weiboID ||
+          !/^\d+$/.test(weiboID)
+        ) {
+          return argv.session.sendQueued("请输入正确格式的UID和微博ID");
+        }
+        const result = await getWeiboCommentsByWeiboID(weiboID, weiboUID, ctx);
+        if (!result?.comments.length) {
+          return argv.session.sendQueued("未找到评论数据");
+        }
+        for (const msg of formatCommentsMessages(result)) {
+          await argv.session.sendQueued(msg);
+        }
+        return;
       } catch (error: any) {
         return argv.session.sendQueued(error.message);
       }
