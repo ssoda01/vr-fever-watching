@@ -1,15 +1,14 @@
 import { Context, Session } from "koishi";
+import { writeFile } from "node:fs/promises";
+import { CONSTANTS } from "../util/constants";
 import {
   getXsrfTokenFromCookies,
   loadCookieStringFromDatabase,
   loadCookiesFromDatabase,
 } from "../util/puppeteer-cookie";
-import { writeFile } from "node:fs/promises";
 
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-const getWeiboByUID = async (
+/** 拉取指定 UID 的微博主页、时间线与点赞列表 */
+export const getWeiboByUID = async (
   weiboUID: string,
   ctx: Context,
   _session?: Session,
@@ -31,7 +30,7 @@ const getWeiboByUID = async (
       "x-xsrf-token": xsrfToken,
       cookie: cookieString,
       referer: `https://weibo.com/u/${weiboUID}`,
-      "user-agent": USER_AGENT,
+      "user-agent": CONSTANTS.USER_AGENT,
     },
   });
 
@@ -52,7 +51,6 @@ const getWeiboByUID = async (
     writeFile("timeline.json", JSON.stringify(timeline, null, 2), "utf-8"),
     writeFile("like.json", JSON.stringify(like, null, 2), "utf-8"),
   ]);
+
   return { profile, timeline, like };
 };
-
-export { getWeiboByUID };

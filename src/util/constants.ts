@@ -28,8 +28,9 @@ export const CONSTANTS = {
   IMAGE_LOAD_TIMEOUT_MS,
   RENDER_CARD_WIDTH,
 };
-
+const IS_WEIBO_UID = /^[0-9]{1,10}$/;
 const IS_QRPIC = "^https?:\/\/[^/]*qr[^/]*\.(com|cn)";
 export const REGEX = {
   IS_QRPIC,
+  IS_WEIBO_UID,
 };
