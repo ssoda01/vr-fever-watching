@@ -1,6 +1,7 @@
 import { Context, Session } from "koishi";
-import { CONSTANTS, REGEX } from "../util/constants";
+import { CONSTANTS } from "../util/constants";
 import {
+  captureLoginQrFromPage,
   collectFullCookiesAfterLogin,
   ensurePuppeteerBrowser,
   formatPuppeteerError,
@@ -29,24 +30,18 @@ export const getQRcode = async (
       timeout: CONSTANTS.WEB_TIMEOUT,
     });
 
-    let qrFound = false;
-    const imgs = await page.$$("img");
-    for (const el of imgs) {
-      const picUrl = await el.evaluate((node) =>
-        (node as HTMLImageElement).getAttribute("src"),
-      );
-      if (picUrl && new RegExp(REGEX.IS_QRPIC).test(picUrl)) {
-        const res = await el.screenshot();
-        sendImg(Buffer.from(res), session);
-        qrFound = true;
-        break;
-      }
+    sendMsg("正在切换到扫码登录...", session);
+    const qrResult = await captureLoginQrFromPage(page, 15000);
+    if (qrResult.debugDir) {
+      sendMsg(`调试截图已保存到: ${qrResult.debugDir}`, session);
     }
-
-    if (!qrFound) {
-      sendMsg("未找到二维码", session);
+    if (!qrResult.detected || !qrResult.dataUrl) {
+      sendMsg("未找到二维码，请查看调试目录中的 page.png / meta.json", session);
       return false;
     }
+
+    const base64 = qrResult.dataUrl.replace(/^data:image\/\w+;base64,/, "");
+    sendImg(Buffer.from(base64, "base64"), session);
 
     sendMsg("请使用微博 App 扫码登录...", session);
     const loggedIn = await waitForLogin(page);
@@ -62,7 +57,8 @@ export const getQRcode = async (
     await saveCookiesToDatabase(ctx, cookies);
 
     if (xsrfToken) {
-      sendMsg("存储成功！已包含 XSRF-TOKEN", session);
+      sendMsg("存储成功！", session);
+      // sendMsg("存储成功！已包含 XSRF-TOKEN", session);
       return true;
     }
 

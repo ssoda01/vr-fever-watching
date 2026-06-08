@@ -4,6 +4,7 @@ import { CONSTANTS } from "./constants";
 type AnyCookie = any;
 
 const WEIBO_PASSPORT_URL = "https://passport.weibo.com/";
+const LOGIN_QR_DEBUG_DIR = path.join(process.cwd(), "data", "weibo-login-debug");
 
 export interface CookieResult {
   cookieString: string;
@@ -190,53 +191,28 @@ export interface QrLoginOptions {
   onQrCaptured?: (dataUrl: string | null) => void | Promise<void>;
 }
 
-async function clickQrTabIfNeeded(page: any) {
-  const clicked = await page.evaluate(() => {
-    const keywords = ["扫码", "二维码", "Scan", "QR"];
-    const candidates = Array.from(
-      document.querySelectorAll("button, a, div, span, li"),
+/** 微博登录页默认可能是短信登录，需先点击 scan.png 图标所在父 span 切换到「扫码登录」 */
+export async function clickWeiboQrLoginTab(page: any): Promise<boolean> {
+  return page.evaluate(() => {
+    const imgs = Array.from(document.querySelectorAll("img"));
+    const scanIcon = imgs.find((img) =>
+      (img.getAttribute("src") || "").includes("scan.png"),
     );
-    for (const el of candidates) {
-      const text = (el as HTMLElement).innerText || "";
-      const className = (el as HTMLElement).className || "";
-      if (
-        keywords.some((k) => text.includes(k)) ||
-        className.includes("qr") ||
-        className.includes("Qr")
-      ) {
-        (el as HTMLElement).click();
-        return true;
-      }
-    }
-    return false;
+    const parentSpan = scanIcon?.parentElement;
+    if (parentSpan?.tagName !== "SPAN") return false;
+    parentSpan.click();
+    return true;
   });
-  if (!clicked) {
-    // try common selectors
-    const sel = [
-      ".qrcode",
-      ".qr",
-      '[class*="qr"]',
-      '[class*="qrcode"]',
-      'li[class*="qr"]',
-      'div[role="tab"]',
-      'a[href*="qr"]',
-    ];
-    for (const s of sel) {
-      const el = await page.$(s);
-      if (el) {
-        try {
-          await el.click();
-          break;
-        } catch {}
-      }
-    }
-  }
+}
+
+async function clickQrTabIfNeeded(page: any) {
+  await clickWeiboQrLoginTab(page);
 }
 
 async function getQrElement(page: any) {
   const selectors = [
     // Common QR code selectors
-    'img[src*="qr"]',
+    'img[src*="qr"]:not([src*="scan.png"])',
     'img[src*="qrcode"]',
     'img[alt*="二维码"]',
     'img[alt*="QR"]',
@@ -298,7 +274,7 @@ async function getQrElement(page: any) {
 
       // Look for images or canvases in this context
       const target = el.querySelector(
-        'canvas, img, [class*="qr"], [class*="qrcode"]',
+        'canvas, img:not([src*="scan.png"]), [class*="qrcode"]',
       );
       if (target) {
         target.setAttribute("data-koishi-weibo-qr", "true");
@@ -339,22 +315,202 @@ async function waitForQrElement(page: any, timeoutMs: number) {
   return null;
 }
 
+async function waitForQrElementReady(page: any) {
+  await page.evaluate(async () => {
+    const isReady = (node: Element) => {
+      if (node instanceof HTMLImageElement) {
+        return node.complete && node.naturalWidth > 0;
+      }
+      if (node instanceof HTMLCanvasElement) {
+        return node.width > 0 && node.height > 0;
+      }
+      const img = node.querySelector("img, canvas");
+      return img ? isReady(img) : true;
+    };
+
+    const target =
+      document.querySelector('[data-koishi-weibo-qr="true"]') ||
+      Array.from(document.querySelectorAll("img")).find(
+        (img) =>
+          (img.getAttribute("src") || "").includes("qr") &&
+          !(img.getAttribute("src") || "").includes("scan.png"),
+      );
+
+    if (!target || isReady(target)) return;
+
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      if (target instanceof HTMLImageElement) {
+        target.addEventListener("load", done, { once: true });
+        target.addEventListener("error", done, { once: true });
+      }
+      setTimeout(done, 3000);
+    });
+  });
+}
+
+/** 导出登录页截图到 data/weibo-login-debug 便于排查白图问题 */
+export async function saveLoginQrDebug(
+  page: any,
+  element: any | null,
+  label: string,
+): Promise<string> {
+  await fs.mkdir(LOGIN_QR_DEBUG_DIR, { recursive: true });
+  const stamp = `${label}-${Date.now()}`;
+  const meta: Record<string, unknown> = { label, savedAt: new Date().toISOString() };
+
+  try {
+    const pageShot = await page.screenshot();
+    const pagePath = path.join(LOGIN_QR_DEBUG_DIR, `${stamp}-page.png`);
+    await fs.writeFile(pagePath, pageShot);
+    meta.pageScreenshot = pagePath;
+  } catch (error) {
+    meta.pageScreenshotError = String(error);
+  }
+
+  if (element) {
+    try {
+      meta.elementInfo = await element.evaluate((el: Element) => {
+        const img =
+          el instanceof HTMLImageElement
+            ? el
+            : el.querySelector("img, canvas");
+        return {
+          tagName: el.tagName,
+          className: (el as HTMLElement).className || "",
+          id: el.id || "",
+          src:
+            img instanceof HTMLImageElement
+              ? img.currentSrc || img.src
+              : img instanceof HTMLCanvasElement
+                ? "<canvas>"
+                : null,
+          width:
+            img instanceof HTMLImageElement
+              ? img.naturalWidth
+              : img instanceof HTMLCanvasElement
+                ? img.width
+                : null,
+          height:
+            img instanceof HTMLImageElement
+              ? img.naturalHeight
+              : img instanceof HTMLCanvasElement
+                ? img.height
+                : null,
+        };
+      });
+    } catch (error) {
+      meta.elementInfoError = String(error);
+    }
+
+    try {
+      const elementShot = await element.screenshot();
+      const elementPath = path.join(LOGIN_QR_DEBUG_DIR, `${stamp}-qr-element.png`);
+      await fs.writeFile(elementPath, elementShot);
+      meta.elementScreenshot = elementPath;
+    } catch (error) {
+      meta.elementScreenshotError = String(error);
+    }
+
+    try {
+      const box = await element.boundingBox();
+      if (box?.width && box?.height) {
+        meta.boundingBox = box;
+        const clipShot = await page.screenshot({
+          clip: {
+            x: box.x,
+            y: box.y,
+            width: Math.ceil(box.width),
+            height: Math.ceil(box.height),
+          },
+        });
+        const clipPath = path.join(LOGIN_QR_DEBUG_DIR, `${stamp}-qr-clip.png`);
+        await fs.writeFile(clipPath, clipShot);
+        meta.clipScreenshot = clipPath;
+      }
+    } catch (error) {
+      meta.clipScreenshotError = String(error);
+    }
+  }
+
+  const metaPath = path.join(LOGIN_QR_DEBUG_DIR, `${stamp}-meta.json`);
+  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+  meta.metaFile = metaPath;
+  return LOGIN_QR_DEBUG_DIR;
+}
+
+const bufferToDataUrl = (buffer: Buffer) =>
+  `data:image/png;base64,${buffer.toString("base64")}`;
+
+/** 切换到扫码登录并等待二维码出现 */
+export async function captureLoginQrFromPage(
+  page: any,
+  timeoutMs = 15000,
+): Promise<{
+  dataUrl: string | null;
+  detected: boolean;
+  debugDir?: string;
+}> {
+  for (let i = 0; i < 3; i++) {
+    await clickWeiboQrLoginTab(page);
+    await wait(1000);
+    const qrResult = await captureQrFromPage(page, 5000, `attempt-${i + 1}`);
+    if (qrResult.detected) return qrResult;
+  }
+  return captureQrFromPage(page, timeoutMs, "final");
+}
+
 export async function captureQrFromPage(
   page: any,
   timeoutMs = 1500,
-): Promise<{ dataUrl: string | null; detected: boolean }> {
+  debugLabel = "capture",
+): Promise<{
+  dataUrl: string | null;
+  detected: boolean;
+  debugDir?: string;
+}> {
+  let element: any = null;
   try {
-    const element = await waitForQrElement(page, timeoutMs);
+    element = await waitForQrElement(page, timeoutMs);
     if (!element) {
-      return { dataUrl: null, detected: false };
+      const debugDir = await saveLoginQrDebug(page, null, `${debugLabel}-missing`);
+      return { dataUrl: null, detected: false, debugDir };
     }
-    const base64 = await element.screenshot({ encoding: "base64" });
+
+    await waitForQrElementReady(page);
+    const debugDir = await saveLoginQrDebug(page, element, debugLabel);
+
+    const box = await element.boundingBox();
+    if (box?.width && box?.height) {
+      const clipBuffer = await page.screenshot({
+        clip: {
+          x: box.x,
+          y: box.y,
+          width: Math.ceil(box.width),
+          height: Math.ceil(box.height),
+        },
+      });
+      return {
+        dataUrl: bufferToDataUrl(Buffer.from(clipBuffer)),
+        detected: true,
+        debugDir,
+      };
+    }
+
+    const elementBuffer = await element.screenshot();
     return {
-      dataUrl: `data:image/png;base64,${String(base64)}`,
+      dataUrl: bufferToDataUrl(Buffer.from(elementBuffer)),
       detected: true,
+      debugDir,
     };
-  } catch {
-    return { dataUrl: null, detected: false };
+  } catch (error) {
+    const debugDir = await saveLoginQrDebug(
+      page,
+      element,
+      `${debugLabel}-error`,
+    ).catch(() => LOGIN_QR_DEBUG_DIR);
+    console.error("captureQrFromPage failed:", error, "debugDir:", debugDir);
+    return { dataUrl: null, detected: false, debugDir };
   }
 }
 
@@ -373,18 +529,10 @@ export async function loginWithQrViaService(
     await opts.onPageCreated?.(page);
     await gotoAndWait(page, WEIBO_PASSPORT_URL, opts.timeoutMs || 120000);
 
-    // Try to find and click QR tab multiple times
-    for (let i = 0; i < 3; i++) {
-      await clickQrTabIfNeeded(page);
-      await wait(1000);
-      const qrResult = await captureQrFromPage(page, 5000);
-      if (qrResult.detected) break;
-    }
-
-    // Wait a bit more for the page to load
-    await wait(2000);
-
-    const qrResult = await captureQrFromPage(page, 15000);
+    const qrResult = await captureLoginQrFromPage(
+      page,
+      opts.timeoutMs ? Math.min(opts.timeoutMs, 15000) : 15000,
+    );
     if (!qrResult.detected) {
       // Take a screenshot for debugging
       const screenshot = await page.screenshot({ encoding: "base64" });

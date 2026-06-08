@@ -1,7 +1,7 @@
 import { Context, Schema, Session } from "koishi";
-import { registerTestCommand } from "./commands/test";
+import { registerWeiboCommand } from "./commands/weibo";
 import { createPollWeibo } from "./service/poll";
-import { ensurePuppeteerBrowser } from "./util/puppeteer-cookie";
+// import { ensurePuppeteerBrowser } from "./util/puppeteer-cookie";
 import { getWaitMs } from "./util/timer";
 
 export const name = "weibo-monitor-multi";
@@ -102,5 +102,5 @@ export async function apply(ctx: Context, config: Config) {
     await ctx.puppeteer.start();
   }
 
-  registerTestCommand(ctx, config, pollWeibo);
+  registerWeiboCommand(ctx, config, pollWeibo);
 }
