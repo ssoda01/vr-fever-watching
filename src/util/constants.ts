@@ -2,10 +2,7 @@ const WEIBO_PASSPORT_URL = "https://passport.weibo.com/";
 const WEB_TIMEOUT = 120000;
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const WEIBO_SAMPLE_UID = "1777106132";
-// const WEIBO_SAMPLE_UID = "6187647068";
-// const WEIBO_SAMPLE_UID = "7198559139";
-// const WEIBO_SAMPLE_UID = "8376019184";
+const WEIBO_SAMPLE_UID = "8376019184";
 // 最近x分钟内的消息
 // const TIME_SCOPE_MINUTES = 30 + 24 * 60;
 /** 图片请求间隔（毫秒），避免并发被微博 CDN 限流 */
@@ -19,6 +16,8 @@ const MAX_RENDER_COMMENT_REPLIES = 3;
 const IMAGE_LOAD_TIMEOUT_MS = 5000;
 /** 微博截图 HTML 卡片宽度（px） */
 const RENDER_CARD_WIDTH = 320;
+/** 每张截图最多包含的微博条数，超出则拆成多张图 */
+const POSTS_PER_SCREENSHOT = 3;
 
 export const CONSTANTS = {
   WEIBO_PASSPORT_URL,
@@ -33,6 +32,7 @@ export const CONSTANTS = {
   MAX_RENDER_COMMENT_REPLIES,
   IMAGE_LOAD_TIMEOUT_MS,
   RENDER_CARD_WIDTH,
+  POSTS_PER_SCREENSHOT,
 };
 const IS_WEIBO_UID = /^[0-9]{1,10}$/;
 const IS_QRPIC = "^https?:\/\/[^/]*qr[^/]*\.(com|cn)";

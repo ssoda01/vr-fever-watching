@@ -1,11 +1,7 @@
 import { h, Session } from "koishi";
 
 const sendImg = (img_buffer: Buffer, session: Session) => {
-  return session.sendQueued(
-    h("img", {
-      src: `data:image/png;base64,${img_buffer.toString("base64")}`,
-    }),
-  );
+  return session.sendQueued(h.image(img_buffer, "image/png"));
 };
 const sendMsg = (msg: string, session: Session) => {
   return session.sendQueued(msg);

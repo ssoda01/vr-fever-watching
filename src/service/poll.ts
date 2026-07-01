@@ -1,9 +1,16 @@
-import { $, Context } from "koishi";
-import { drawTimelines, type TimelineEntry } from "./drawer";
-import { filterTimelineWithinMinutes, mergeActivityTimeline } from "./timeline";
+import { $, Context, Session } from "koishi";
+import { drawEntryImages, type TimelineEntry } from "./drawer";
+import {
+  filterTimelineWithinMinutes,
+  formatEntryMessages,
+  mergeActivityTimeline,
+} from "./timeline";
 import { attachCommentsToEntries } from "./comment/fetch-for-timeline";
 import { getWeiboByUID } from "./weibo-fetch";
 import { formatPuppeteerError } from "../util/puppeteer-cookie";
+import { CONSTANTS } from "../util/constants";
+import { sendImg, sendMsg } from "../util/send-msg";
+import { saveScreenshotDebug } from "../util/save-screenshot";
 import type { Config } from "../index";
 
 type SendMsgSession = {
@@ -17,7 +24,7 @@ export const createPollWeibo = (
   sendMsgOnebot: (groupId: string) => SendMsgSession,
 ) => {
   return async () => {
-    ctx.logger.info("定时器开始");
+    ctx.logger.info("拉一轮订阅");
 
     const groups = await ctx.database
       .select("weibo_subscribes")
@@ -84,13 +91,51 @@ export const createPollWeibo = (
         continue;
       }
 
-      try {
-        const image = await drawTimelines(ctx, entries);
-        if (image) {
-          await session.sendQueued(image);
+      for (const entry of entries) {
+        try {
+          const name =
+            entry.profile.user?.screen_name ||
+            String(
+              entry.profile.user?.idstr ||
+                entry.profile.user?.id ||
+                "unknown",
+            );
+
+          if (config.isTextMode) {
+            const messages = formatEntryMessages(entry);
+            for (const message of messages) {
+              await sendMsg(message, session as Session);
+            }
+            ctx.logger.info(`文本已推送: ${name} (${messages.length} 条)`);
+            continue;
+          }
+
+          const images = await drawEntryImages(ctx, entry);
+          const uid = String(
+            entry.profile.user?.idstr || entry.profile.user?.id || "unknown",
+          );
+
+          for (let i = 0; i < images.length; i++) {
+            const image = images[i];
+            const postCount = Math.min(
+              CONSTANTS.POSTS_PER_SCREENSHOT,
+              entry.timeline.length - i * CONSTANTS.POSTS_PER_SCREENSHOT,
+            );
+            const saved = await saveScreenshotDebug(image, {
+              uid,
+              name,
+              chunkIndex: i,
+              totalChunks: images.length,
+              postCount,
+            });
+            ctx.logger.info(
+              `截图已保存: ${saved.filePath} (${saved.sizeKB} KB, ${name} ${i + 1}/${images.length})`,
+            );
+            await sendImg(image, session as Session);
+          }
+        } catch (error) {
+          ctx.logger.warn(formatPuppeteerError(error));
         }
-      } catch (error) {
-        ctx.logger.warn(formatPuppeteerError(error));
       }
     }
   };

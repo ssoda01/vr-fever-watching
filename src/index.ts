@@ -42,6 +42,7 @@ export interface Config {
   adminAccount: string;
   adminGroupID: string;
   waitMinutes: number;
+  isTextMode: boolean;
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -51,6 +52,9 @@ export const Config: Schema<Config> = Schema.object({
     .default(3)
     .min(3)
     .description("隔多久拉取一次最新微博 (分钟)，最少3分钟"),
+  isTextMode: Schema.boolean()
+    .default(false)
+    .description("开启后以文本推送微博，关闭则以截图图片推送"),
 });
 
 export async function apply(ctx: Context, config: Config) {
@@ -82,12 +86,23 @@ export async function apply(ctx: Context, config: Config) {
     },
   );
 
+  /**
+   * 创建一个用于发送消息到OneBot的会话对象
+   * @param groupId - 目标群组的ID
+   * @returns 返回一个Session对象，包含发送消息的方法
+   */
   const sendMsgOnebot = (groupId: string): Session => {
+    // 获取管理员账号并去除首尾空格
     const account = config.adminAccount.trim();
+    // 从上下文中获取指定账号的OneBot实例
     const bot = ctx.bots[`onebot:${account}`];
+    // 返回一个Session对象
     return {
+      // 发送消息方法，支持队列
       sendQueued: (content) => {
+        // 检查机器人实例是否存在
         if (!bot) {
+          // 如果不存在，记录警告日志并显示可用的机器人实例
           ctx.logger.warn(
             `未找到机器人实例: onebot:${account}，当前可用: ${Object.keys(ctx.bots).join(", ") || "无"}`,
           );
@@ -126,9 +141,10 @@ export async function apply(ctx: Context, config: Config) {
     }
   };
 
-  ctx.setInterval(checkLoginStatusProcess, getWaitMs(30));
-
   const pollWeibo = createPollWeibo(ctx, config, sendMsgOnebot);
+  // 定时任务 - 抓微博
+  ctx.setInterval(checkLoginStatusProcess, getWaitMs(30));
+  // 定时任务 - 登录状态检测
   ctx.setInterval(pollWeibo, getWaitMs(config.waitMinutes));
 
   if (!ctx.puppeteer.browser?.connected) {

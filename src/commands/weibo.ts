@@ -39,9 +39,8 @@ export const registerWeiboCommand = (
           `- ${subscribe.isActive ? "💚" : "🩶"} ${subscribe.weiboUID} ${subscribe.weiboName} `,
         );
       });
-      const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
+      await argv.session.sendQueued(msg.join("\n"));
       return;
-      return bot.sendMessage(groupID, msg.join("\n"));
     }
 
     if (message === "add") {
@@ -71,8 +70,10 @@ export const registerWeiboCommand = (
         createdAt: new Date(),
       });
 
-      const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
-      return bot.sendMessage(groupID, `订阅成功: ${weiboUID}`);
+      // const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
+      // return bot.sendMessage(groupID, `订阅成功: ${weiboUID}`);
+      argv.session.sendQueued(`订阅成功: ${weiboUID}`);
+      return;
     }
 
     if (message === "remove") {
@@ -108,8 +109,10 @@ export const registerWeiboCommand = (
         },
       );
 
-      const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
-      return bot.sendMessage(groupID, `移除订阅成功: ${weiboUID}`);
+      // const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
+      // return bot.sendMessage(groupID, `移除订阅成功: ${weiboUID}`);
+      argv.session.sendQueued(`移除订阅成功: ${weiboUID}`);
+      return;
     }
 
     if (message === "help") {
