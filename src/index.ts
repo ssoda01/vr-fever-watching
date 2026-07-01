@@ -43,6 +43,7 @@ export interface Config {
   adminGroupID: string;
   waitMinutes: number;
   isTextMode: boolean;
+  isDebugMode: boolean;
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -55,6 +56,9 @@ export const Config: Schema<Config> = Schema.object({
   isTextMode: Schema.boolean()
     .default(false)
     .description("开启后以文本推送微博，关闭则以截图图片推送"),
+  isDebugMode: Schema.boolean()
+    .default(false)
+    .description("开启后保存调试截图（登录二维码、微博推送截图等）"),
 });
 
 export async function apply(ctx: Context, config: Config) {

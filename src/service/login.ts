@@ -14,11 +14,13 @@ import {
   waitForLogin,
 } from "../util/puppeteer-cookie";
 import { sendImg, sendMsg } from "../util/send-msg";
+import { getWaitMs } from "../util/timer";
 
 /** 打开微博登录页，截图二维码并等待扫码完成 */
 export const getQRcode = async (
   ctx: Context,
   session: Session,
+  isDebugMode = false,
 ): Promise<boolean> => {
   await ensurePuppeteerBrowser(ctx);
   const page = await ctx.puppeteer.page();
@@ -29,15 +31,24 @@ export const getQRcode = async (
 
   try {
     sendMsg("开启网站中...", session);
-    await navigatePage(page, CONSTANTS.WEIBO_PASSPORT_URL);
+    await navigatePage(page, CONSTANTS.WEIBO_PASSPORT_URL, getWaitMs(0.4));
 
     sendMsg("正在切换到扫码登录...", session);
-    const qrResult = await captureLoginQrFromPage(page, 15000);
+    const qrResult = await captureLoginQrFromPage(
+      page,
+      getWaitMs(0.4),
+      isDebugMode,
+    );
     if (qrResult.debugDir) {
       sendMsg(`调试截图已保存到: ${qrResult.debugDir}`, session);
     }
     if (!qrResult.detected || !qrResult.dataUrl) {
-      sendMsg("未找到二维码，请查看调试目录中的 page.png / meta.json", session);
+      sendMsg(
+        isDebugMode
+          ? "未找到二维码，请查看调试目录中的 page.png / meta.json"
+          : "未找到二维码，请重试",
+        session,
+      );
       return false;
     }
 

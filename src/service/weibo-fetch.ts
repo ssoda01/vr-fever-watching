@@ -18,9 +18,18 @@ export const getWeiboByUID = async (
     return null;
   }
 
-  const profile = await weiboHttp
-    .get(`/ajax/profile/info?uid=${weiboUID}&scene=profile`)
-    .then((res: any) => res?.data || null);
+  const profilePath = `/ajax/profile/info?uid=${weiboUID}&scene=profile`;
+  const fetchProfile = () =>
+    weiboHttp
+      .get(profilePath)
+      .then((res: any) => res?.data || null);
+
+  let profile;
+  try {
+    profile = await fetchProfile();
+  } catch {
+    profile = await fetchProfile();
+  }
 
   const timeline = await weiboHttp
     .get(`/ajax/statuses/mymblog?uid=${weiboUID}&page=1&feature=0`)

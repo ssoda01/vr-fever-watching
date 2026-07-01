@@ -121,16 +121,20 @@ export const createPollWeibo = (
               CONSTANTS.POSTS_PER_SCREENSHOT,
               entry.timeline.length - i * CONSTANTS.POSTS_PER_SCREENSHOT,
             );
-            const saved = await saveScreenshotDebug(image, {
-              uid,
-              name,
-              chunkIndex: i,
-              totalChunks: images.length,
-              postCount,
-            });
-            ctx.logger.info(
-              `截图已保存: ${saved.filePath} (${saved.sizeKB} KB, ${name} ${i + 1}/${images.length})`,
-            );
+            const saved = config.isDebugMode
+              ? await saveScreenshotDebug(image, {
+                  uid,
+                  name,
+                  chunkIndex: i,
+                  totalChunks: images.length,
+                  postCount,
+                })
+              : null;
+            if (saved) {
+              ctx.logger.info(
+                `截图已保存: ${saved.filePath} (${saved.sizeKB} KB, ${name} ${i + 1}/${images.length})`,
+              );
+            }
             await sendImg(image, session as Session);
           }
         } catch (error) {

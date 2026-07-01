@@ -140,7 +140,7 @@ export const registerWeiboCommand = (
     if (message === "login") {
       try {
         await ensurePuppeteerBrowser(ctx);
-        await getQRcode(ctx, argv.session);
+        await getQRcode(ctx, argv.session, config.isDebugMode);
       } catch (error) {
         sendMsg(formatPuppeteerError(error), argv.session);
       }

@@ -224,6 +224,7 @@ export async function collectFullCookiesAfterLogin(
 
 export interface QrLoginOptions {
   timeoutMs?: number;
+  saveDebug?: boolean;
   onPageCreated?: (page: any) => void | Promise<void>;
   onQrCaptured?: (dataUrl: string | null) => void | Promise<void>;
 }
@@ -391,7 +392,10 @@ export async function saveLoginQrDebug(
   page: any,
   element: any | null,
   label: string,
-): Promise<string> {
+  saveDebug = false,
+): Promise<string | null> {
+  if (!saveDebug) return null;
+
   await fs.mkdir(LOGIN_QR_DEBUG_DIR, { recursive: true });
   const stamp = `${label}-${Date.now()}`;
   const meta: Record<string, unknown> = { label, savedAt: new Date().toISOString() };
@@ -483,6 +487,7 @@ const bufferToDataUrl = (buffer: Buffer) =>
 export async function captureLoginQrFromPage(
   page: any,
   timeoutMs = 15000,
+  saveDebug = false,
 ): Promise<{
   dataUrl: string | null;
   detected: boolean;
@@ -491,16 +496,22 @@ export async function captureLoginQrFromPage(
   for (let i = 0; i < 3; i++) {
     await clickWeiboQrLoginTab(page);
     await wait(1000);
-    const qrResult = await captureQrFromPage(page, 5000, `attempt-${i + 1}`);
+    const qrResult = await captureQrFromPage(
+      page,
+      5000,
+      `attempt-${i + 1}`,
+      saveDebug,
+    );
     if (qrResult.detected) return qrResult;
   }
-  return captureQrFromPage(page, timeoutMs, "final");
+  return captureQrFromPage(page, timeoutMs, "final", saveDebug);
 }
 
 export async function captureQrFromPage(
   page: any,
   timeoutMs = 1500,
   debugLabel = "capture",
+  saveDebug = false,
 ): Promise<{
   dataUrl: string | null;
   detected: boolean;
@@ -510,12 +521,22 @@ export async function captureQrFromPage(
   try {
     element = await waitForQrElement(page, timeoutMs);
     if (!element) {
-      const debugDir = await saveLoginQrDebug(page, null, `${debugLabel}-missing`);
-      return { dataUrl: null, detected: false, debugDir };
+      const debugDir = await saveLoginQrDebug(
+        page,
+        null,
+        `${debugLabel}-missing`,
+        saveDebug,
+      );
+      return { dataUrl: null, detected: false, debugDir: debugDir ?? undefined };
     }
 
     await waitForQrElementReady(page);
-    const debugDir = await saveLoginQrDebug(page, element, debugLabel);
+    const debugDir = await saveLoginQrDebug(
+      page,
+      element,
+      debugLabel,
+      saveDebug,
+    );
 
     const box = await element.boundingBox();
     if (box?.width && box?.height) {
@@ -530,7 +551,7 @@ export async function captureQrFromPage(
       return {
         dataUrl: bufferToDataUrl(Buffer.from(clipBuffer)),
         detected: true,
-        debugDir,
+        debugDir: debugDir ?? undefined,
       };
     }
 
@@ -538,16 +559,17 @@ export async function captureQrFromPage(
     return {
       dataUrl: bufferToDataUrl(Buffer.from(elementBuffer)),
       detected: true,
-      debugDir,
+      debugDir: debugDir ?? undefined,
     };
   } catch (error) {
     const debugDir = await saveLoginQrDebug(
       page,
       element,
       `${debugLabel}-error`,
-    ).catch(() => LOGIN_QR_DEBUG_DIR);
+      saveDebug,
+    ).catch(() => null);
     console.error("captureQrFromPage failed:", error, "debugDir:", debugDir);
-    return { dataUrl: null, detected: false, debugDir };
+    return { dataUrl: null, detected: false, debugDir: debugDir ?? undefined };
   }
 }
 
@@ -569,6 +591,7 @@ export async function loginWithQrViaService(
     const qrResult = await captureLoginQrFromPage(
       page,
       opts.timeoutMs ? Math.min(opts.timeoutMs, 15000) : 15000,
+      opts.saveDebug ?? false,
     );
     if (!qrResult.detected) {
       // Take a screenshot for debugging
