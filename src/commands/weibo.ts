@@ -40,6 +40,7 @@ export const registerWeiboCommand = (
         );
       });
       const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
+      return;
       return bot.sendMessage(groupID, msg.join("\n"));
     }
 

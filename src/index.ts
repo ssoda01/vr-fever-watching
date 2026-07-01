@@ -5,7 +5,7 @@ import { createPollWeibo } from "./service/poll";
 import { getWaitMs } from "./util/timer";
 import { checkLoginStatus } from "./service/login";
 
-export const name = "weibo-monitor-multi";
+export const name = "vr-fever";
 
 export interface WeiboCookie {
   name: string;
@@ -100,7 +100,7 @@ export async function apply(ctx: Context, config: Config) {
   let checkingLoginStatus = false;
   const checkLoginStatusProcess = async (): Promise<void> => {
     if (checkingLoginStatus) {
-      // ctx.logger.debug("登录状态检查进行中，跳过本次定时任务");
+      ctx.logger.debug("登录状态检查进行中，跳过本次定时任务");
       return;
     }
     checkingLoginStatus = true;
@@ -110,7 +110,6 @@ export async function apply(ctx: Context, config: Config) {
         ctx.logger.error("管理员群ID未设置，无法发送消息");
         return;
       }
-
       const loginStatus = await checkLoginStatus(ctx);
       const formatter = (status: boolean) => {
         return `微博登录状态${status ? "正常" : "异常"}，当前时间戳: ${new Date().toLocaleString()}`;

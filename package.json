@@ -1,6 +1,6 @@
 {
-  "name": "koishi-plugin-weibo-monitor-multi",
-  "description": "改型 期间内同博主多条微博",
+  "name": "koishi-plugin-vr-fever",
+  "description": "自用改型",
   "version": "0.0.1",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
@@ -9,12 +9,53 @@
     "dist"
   ],
   "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ssoda01/vr-fever-watching.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ssoda01/vr-fever-watching/issues"
+  },
+  "homepage": "https://github.com/ssoda01/vr-fever-watching#readme",
   "keywords": [
     "chatbot",
     "koishi",
-    "plugin"
+    "plugin",
+    "weibo",
+    "monitor",
+    "puppeteer"
   ],
+  "koishi": {
+    "description": {
+      "zh": "自用改型回旋插件",
+      "en": "For home use 💚"
+    },
+    "service": {
+      "required": [
+        "puppeteer",
+        "database",
+        "http"
+      ],
+      "optional": [
+        "console",
+        "server"
+      ]
+    },
+    "locales": [
+      "zh",
+      "en"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "typescript": "^5.6.2"
+  },
   "peerDependencies": {
-    "koishi": "^4.18.7"
+    "koishi": "^4.18.7",
+    "koishi-plugin-puppeteer": "^3.9.0"
   }
 }
