@@ -120,6 +120,12 @@ export function formatPuppeteerError(error: unknown): string {
   ) {
     return "无法连接微博网站，请检查网络或代理设置后重试。";
   }
+  if (
+    message.includes("Navigation timeout") ||
+    message.includes("TimeoutError")
+  ) {
+    return "访问微博页面超时，请检查网络连接或稍后重试。";
+  }
   return message;
 }
 
@@ -142,7 +148,38 @@ async function preparePage(page: any) {
 
 async function gotoAndWait(page: any, url: string, timeoutMs: number) {
   await preparePage(page);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await page
+    .setExtraHTTPHeaders({
+      referer: "https://weibo.com/",
+      "accept-language": "zh-CN,zh;q=0.9",
+    })
+    .catch(() => {});
+
+  const waitUntilOptions = ["domcontentloaded", "commit"] as const;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    for (const waitUntil of waitUntilOptions) {
+      try {
+        await page.goto(url, { waitUntil, timeout: timeoutMs });
+        return;
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          !message.includes("Navigation timeout") &&
+          !message.includes("TimeoutError")
+        ) {
+          throw error;
+        }
+      }
+    }
+    if (attempt < 2) await wait(2000);
+  }
+  throw lastError;
+}
+
+export async function navigatePage(page: any, url: string, timeoutMs?: number) {
+  await gotoAndWait(page, url, timeoutMs ?? CONSTANTS.WEB_TIMEOUT);
 }
 
 async function wait(ms: number) {
@@ -180,7 +217,7 @@ export async function waitForLogin(
 export async function collectFullCookiesAfterLogin(
   page: any,
 ): Promise<AnyCookie[]> {
-  await gotoAndWait(page, "https://weibo.com/", 60000);
+  await gotoAndWait(page, "https://weibo.com/", CONSTANTS.WEB_TIMEOUT);
   await wait(3000);
   return page.cookies();
 }
@@ -603,7 +640,7 @@ export async function renewCookiesViaService(
     }
 
     // 访问微博首页，这通常会触发微博的鉴权和 Cookie 续期
-    await gotoAndWait(page, "https://weibo.com/", 60000);
+    await gotoAndWait(page, "https://weibo.com/", CONSTANTS.WEB_TIMEOUT);
 
     // 等待页面加载和可能的重定向完成
     await wait(3000);

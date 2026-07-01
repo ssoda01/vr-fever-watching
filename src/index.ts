@@ -3,6 +3,7 @@ import { registerWeiboCommand } from "./commands/weibo";
 import { createPollWeibo } from "./service/poll";
 // import { ensurePuppeteerBrowser } from "./util/puppeteer-cookie";
 import { getWaitMs } from "./util/timer";
+import { checkLoginStatus } from "./service/login";
 
 export const name = "weibo-monitor-multi";
 
@@ -39,11 +40,13 @@ export const inject = {
 
 export interface Config {
   adminAccount: string;
+  adminGroupID: string;
   waitMinutes: number;
 }
 
 export const Config: Schema<Config> = Schema.object({
   adminAccount: Schema.string().description("账号(qq号)"),
+  adminGroupID: Schema.string().description("管理员群ID，用于微博是否掉登录"),
   waitMinutes: Schema.number()
     .default(3)
     .min(3)
@@ -94,6 +97,37 @@ export async function apply(ctx: Context, config: Config) {
       },
     } as Session;
   };
+  let checkingLoginStatus = false;
+  const checkLoginStatusProcess = async (): Promise<void> => {
+    if (checkingLoginStatus) {
+      // ctx.logger.debug("登录状态检查进行中，跳过本次定时任务");
+      return;
+    }
+    checkingLoginStatus = true;
+    try {
+      // ctx.logger.info("开始检测登录状态...");
+      if (!config.adminGroupID) {
+        ctx.logger.error("管理员群ID未设置，无法发送消息");
+        return;
+      }
+
+      const loginStatus = await checkLoginStatus(ctx);
+      const formatter = (status: boolean) => {
+        return `微博登录状态${status ? "正常" : "异常"}，当前时间戳: ${new Date().toLocaleString()}`;
+      };
+      if (!loginStatus) {
+        await sendMsgOnebot(config.adminGroupID).sendQueued(formatter(false));
+        ctx.logger.error(formatter(false));
+        return;
+      }
+      // await sendMsgOnebot(config.adminGroupID).sendQueued(formatter(true));
+      // ctx.logger.info(formatter(true));
+    } finally {
+      checkingLoginStatus = false;
+    }
+  };
+
+  ctx.setInterval(checkLoginStatusProcess, getWaitMs(30));
 
   const pollWeibo = createPollWeibo(ctx, config, sendMsgOnebot);
   ctx.setInterval(pollWeibo, getWaitMs(config.waitMinutes));

@@ -6,6 +6,10 @@ import {
   ensurePuppeteerBrowser,
   formatPuppeteerError,
   getXsrfTokenFromCookies,
+  isPuppeteerConnectionError,
+  loadCookiesFromDatabase,
+  navigatePage,
+  renewCookiesViaService,
   saveCookiesToDatabase,
   waitForLogin,
 } from "../util/puppeteer-cookie";
@@ -25,10 +29,7 @@ export const getQRcode = async (
 
   try {
     sendMsg("开启网站中...", session);
-    await page.goto(CONSTANTS.WEIBO_PASSPORT_URL, {
-      waitUntil: "domcontentloaded",
-      timeout: CONSTANTS.WEB_TIMEOUT,
-    });
+    await navigatePage(page, CONSTANTS.WEIBO_PASSPORT_URL);
 
     sendMsg("正在切换到扫码登录...", session);
     const qrResult = await captureLoginQrFromPage(page, 15000);
@@ -70,5 +71,28 @@ export const getQRcode = async (
   } finally {
     await page.close().catch(() => {});
     sendMsg("已关闭网站链接，结束扫码流程", session);
+  }
+};
+export const checkLoginStatus = async (
+  ctx: Context,
+): Promise<boolean | null> => {
+  try {
+    const existingCookies = await loadCookiesFromDatabase(ctx);
+    if (!existingCookies?.length) {
+      return false;
+    }
+
+    await ensurePuppeteerBrowser(ctx);
+    const result = await renewCookiesViaService(ctx, existingCookies);
+    const xsrfToken = getXsrfTokenFromCookies(result.cookies);
+    if (xsrfToken) {
+      await saveCookiesToDatabase(ctx, result.cookies);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    if (isPuppeteerConnectionError(error)) throw error;
+    console.log("checkLoginStatus error:", formatPuppeteerError(error));
+    return null;
   }
 };

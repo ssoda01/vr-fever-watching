@@ -1,7 +1,7 @@
 import { Channel, Context } from "koishi";
 import type Puppeteer from "koishi-plugin-puppeteer";
 import type { Config } from "../index";
-import { getQRcode } from "../service/login";
+import { checkLoginStatus, getQRcode } from "../service/login";
 // import { formatCommentsMessages } from "../service/comment/formatter";
 // import { getWeiboCommentsByWeiboID } from "../service/weibo-fetch";
 import { REGEX } from "../util/constants";
@@ -108,7 +108,7 @@ export const registerWeiboCommand = (
       );
 
       const bot = ctx.bots[`onebot:${config.adminAccount.trim()}`];
-      return bot.sendMessage(groupID, `订阅成功: ${weiboUID}`);
+      return bot.sendMessage(groupID, `移除订阅成功: ${weiboUID}`);
     }
 
     if (message === "help") {
@@ -183,7 +183,18 @@ export const registerWeiboCommand = (
         return argv.session.sendQueued(formatPuppeteerError(error));
       }
     }
-
+    if (message === "check") {
+      try {
+        const loginStatus = await checkLoginStatus(ctx);
+        if (loginStatus) {
+          return argv.session.sendQueued("微博登录状态正常");
+        } else {
+          return argv.session.sendQueued("微博登录状态异常");
+        }
+      } catch (error: any) {
+        return argv.session.sendQueued(formatPuppeteerError(error));
+      }
+    }
     return;
   });
 };
