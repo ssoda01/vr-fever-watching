@@ -56,17 +56,27 @@ export const registerWeiboCommand = (
       }
       const beforeSubscribe = await ctx.database
         .select("weibo_subscribes")
-        .where({ id: `${weiboUID}-${groupID}`})
+        .where({ id: `${weiboUID}-${groupID}` })
         .execute();
       if (beforeSubscribe.length > 0) {
-        for(let subscribe of beforeSubscribe) {
-          if(subscribe.isActive) {
+        for (let subscribe of beforeSubscribe) {
+          if (subscribe.isActive) {
             argv.session.sendQueued("已订阅，无需重复订阅");
             return;
           }
         }
       }
 
+      if (beforeSubscribe.find((item) => item.isActive != true)) {
+        // 如果存在设置为isActive=false的同名记录，就修改为重新激活
+        await ctx.database.set("weibo_subscribes", {
+          id: `${weiboUID}-${groupID}`,
+          isActive: true,
+        });
+        argv.session.sendQueued(`重新订阅成功: ${weiboUID}`);
+        return;
+      }
+      // 否则就创建新的记录
       await ctx.database.create("weibo_subscribes", {
         id: `${weiboUID}-${groupID}`,
         weiboUID,
