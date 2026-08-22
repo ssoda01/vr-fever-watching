@@ -71,6 +71,8 @@ export const registerWeiboCommand = (
         // 如果存在设置为isActive=false的同名记录，就修改为重新激活
         await ctx.database.set("weibo_subscribes", {
           id: `${weiboUID}-${groupID}`,
+        },
+        {
           isActive: true,
         });
         argv.session.sendQueued(`重新订阅成功: ${weiboUID}`);
