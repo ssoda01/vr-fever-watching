@@ -56,7 +56,7 @@ export const registerWeiboCommand = (
       }
       const beforeSubscribe = await ctx.database
         .select("weibo_subscribes")
-        .where({ id: `${weiboUID}-${groupID}` })
+        .where({ id: `${weiboUID}-${groupID}`, isActive: true })
         .execute();
       if (beforeSubscribe.length > 0) {
         return argv.session.sendQueued("已订阅，无需重复订阅");
@@ -89,7 +89,7 @@ export const registerWeiboCommand = (
       }
       const beforeSubscribe = await ctx.database
         .select("weibo_subscribes")
-        .where({ id: `${weiboUID}-${groupID}` })
+        .where({ id: `${weiboUID}-${groupID}`, isActive: true })
         .execute();
       if (beforeSubscribe.length === 0) {
         return argv.session.sendQueued("未找到订阅，无需取消订阅");
