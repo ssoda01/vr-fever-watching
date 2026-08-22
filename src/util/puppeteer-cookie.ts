@@ -583,7 +583,13 @@ export async function loginWithQrViaService(
   if (!ctx.puppeteer.browser && typeof ctx.puppeteer.start === "function") {
     await ctx.puppeteer.start();
   }
-  const page = await ctx.puppeteer.page();
+  const page = await ctx.puppeteer.page().setViewport({
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
   try {
     await opts.onPageCreated?.(page);
     await gotoAndWait(page, WEIBO_PASSPORT_URL, opts.timeoutMs || 120000);
