@@ -1,7 +1,6 @@
 import { Context } from "koishi";
 import { CONSTANTS } from "../../util/constants";
-import { parsePuppeteerRenderOutput } from "../../util/parse-render-output";
-import { ensurePuppeteerBrowser } from "../../util/puppeteer-cookie";
+import { ensurePuppeteerBrowser } from "../../util/puppeteer";
 import type { NormalizedPost } from "../timeline/types";
 import {
   buildMultiTimelineHtml,
@@ -34,21 +33,44 @@ const waitForImages = async (page: any, timeoutMs: number) => {
   }, timeoutMs);
 };
 
+const toImageBuffer = (output: unknown) => {
+  if (Buffer.isBuffer(output)) return output;
+  if (output instanceof Uint8Array) return Buffer.from(output);
+  return null;
+};
+
+const screenshotSelector = async (page: any, selector: string) => {
+  await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
+  const el = await page.$(selector);
+  if (!el) return null;
+  const box = await el.boundingBox();
+  if (!box || box.width < 1 || box.height < 1) return null;
+  const output = await page.screenshot({
+    type: "jpeg",
+    quality: 85,
+    clip: {
+      x: Math.max(0, Math.floor(box.x)),
+      y: Math.max(0, Math.floor(box.y)),
+      width: Math.max(1, Math.ceil(box.width)),
+      height: Math.max(1, Math.ceil(box.height)),
+    },
+  });
+  return toImageBuffer(output);
+};
+
 export const drawTimeline = async (
   ctx: Context,
   profile: ProfileData,
   normalizedTimeline: NormalizedPost[],
 ) => {
   await ensurePuppeteerBrowser(ctx);
-  const { profile: resolvedProfile, timeline: resolvedTimeline } =
+  const { profile: resolvedProfile, timeline: resolvedTimeline, faceSrc } =
     await prepareDrawerAssets(ctx, profile, normalizedTimeline);
-  const html = buildTimelineHtml(resolvedProfile, resolvedTimeline);
-  const output = await ctx.puppeteer.render(html, async (page, next) => {
-    await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
-    const card = await page.$(".weibo-card");
-    return next(card || undefined);
+  const html = buildTimelineHtml(resolvedProfile, resolvedTimeline, faceSrc);
+  const output = await ctx.puppeteer.render(html, async (page) => {
+    return screenshotSelector(page, ".weibo-card");
   });
-  return output ? parsePuppeteerRenderOutput(output) : null;
+  return toImageBuffer(output);
 };
 
 /** 单个博主截图：微博过多时按 POSTS_PER_SCREENSHOT 条拆成多张图 */
@@ -84,10 +106,8 @@ export const drawTimelines = async (ctx: Context, entries: TimelineEntry[]) => {
     );
   }
   const html = buildMultiTimelineHtml(resolvedEntries);
-  const output = await ctx.puppeteer.render(html, async (page, next) => {
-    await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
-    const cards = await page.$("#weibo-cards");
-    return next(cards || undefined);
+  const output = await ctx.puppeteer.render(html, async (page) => {
+    return screenshotSelector(page, "#weibo-cards");
   });
-  return output ? parsePuppeteerRenderOutput(output) : null;
+  return toImageBuffer(output);
 };

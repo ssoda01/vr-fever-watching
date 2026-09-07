@@ -30,7 +30,11 @@ export async function saveScreenshotDebug(
     /[^\w\u4e00-\u9fff-]/g,
     "_",
   );
-  const filename = `${safeName}-${Date.now()}-part${meta.chunkIndex + 1}of${meta.totalChunks}-posts${meta.postCount}.png`;
+  const ext =
+    buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8
+      ? "jpg"
+      : "png";
+  const filename = `${safeName}-${Date.now()}-part${meta.chunkIndex + 1}of${meta.totalChunks}-posts${meta.postCount}.${ext}`;
   const filePath = path.join(SCREENSHOT_DEBUG_DIR, filename);
   await fs.writeFile(filePath, buffer);
   const sizeBytes = buffer.length;

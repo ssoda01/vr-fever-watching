@@ -1,7 +1,17 @@
 const WEIBO_PASSPORT_URL =
   "https://passport.weibo.com/sso/signin?entry=account&source=sinassopage&url=https%3A%2F%2Fmy.sina.com.cn";
-// const WEIBO_PASSPORT_URL = "https://passport.weibo.com/";
+const WEIBO_HOME_URL = "https://weibo.com/";
 const WEB_TIMEOUT = 120000;
+/** 登录页使用移动端视口，微博才会展示扫码入口 */
+const LOGIN_QR_VIEWPORT = {
+  width: 390,
+  height: 844,
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+};
+/** 打开登录页前探测微博可达性的超时（毫秒） */
+const NETWORK_PROBE_TIMEOUT_MS = 8000;
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const WEIBO_SAMPLE_UID = "8376019184";
@@ -23,7 +33,10 @@ const POSTS_PER_SCREENSHOT = 3;
 
 export const CONSTANTS = {
   WEIBO_PASSPORT_URL,
+  WEIBO_HOME_URL,
   WEB_TIMEOUT,
+  LOGIN_QR_VIEWPORT,
+  NETWORK_PROBE_TIMEOUT_MS,
   USER_AGENT,
   WEIBO_SAMPLE_UID,
   // TIME_SCOPE_MINUTES,

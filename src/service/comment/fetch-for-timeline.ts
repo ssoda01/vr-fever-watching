@@ -2,7 +2,7 @@ import type { Context } from "koishi";
 import type { TimelineEntry } from "../drawer/types";
 import { EActivityType } from "../timeline";
 import { CONSTANTS } from "../../util/constants";
-import { getWeiboCommentsByWeiboID } from "../weibo-fetch";
+import { getWeiboCommentsByWeiboID } from "../weibo";
 import { filterCommentsWithinMinutes } from "./filter";
 
 /** 为时间线中的原创/转发微博批量拉取评论并写回 entry */
@@ -26,14 +26,21 @@ export const attachCommentsToEntries = async (
 
   const results = await Promise.all(
     tasks.map(async ({ weiboUID, weiboID }) => {
-      const result = await getWeiboCommentsByWeiboID(weiboID, weiboUID, ctx, {
-        count: CONSTANTS.MAX_RENDER_COMMENTS,
-      });
-      const comments = filterCommentsWithinMinutes(
-        result?.comments ?? [],
-        minutes,
-      );
-      return { weiboID, comments };
+      try {
+        const result = await getWeiboCommentsByWeiboID(weiboID, weiboUID, ctx, {
+          count: CONSTANTS.MAX_RENDER_COMMENTS,
+        });
+        const comments = filterCommentsWithinMinutes(
+          result?.comments ?? [],
+          minutes,
+        );
+        return { weiboID, comments };
+      } catch (error) {
+        ctx.logger.error(
+          `[weibo api] 评论拉取失败 uid=${weiboUID} id=${weiboID} ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return { weiboID, comments: [] };
+      }
     }),
   );
 

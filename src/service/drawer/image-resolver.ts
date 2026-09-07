@@ -1,6 +1,7 @@
 import { Context } from "koishi";
 import { CONSTANTS } from "../../util/constants";
-import { loadCookieStringFromDatabase } from "../../util/puppeteer-cookie";
+import { loadCookieStringFromDatabase } from "../../util/cookies";
+import { collectWeiboFaces, loadCachedFace, saveCachedFace } from "../../util/weibo-face";
 import {
   countPostPics,
   getPageCoverUrl,
@@ -54,14 +55,14 @@ const takePostImageUrls = (
   };
 };
 
-const fetchImageAsDataUrl = async (
+const fetchImageBinary = async (
   ctx: Context,
   url: string,
   cookieString: string | null,
   referer = "https://weibo.com/",
-): Promise<string | null> => {
+): Promise<{ buffer: Buffer; mimeType: string } | null> => {
   const normalizedUrl = normalizeImageUrl(url);
-  if (!normalizedUrl || normalizedUrl.startsWith("data:")) return normalizedUrl;
+  if (!normalizedUrl || normalizedUrl.startsWith("data:")) return null;
   const referers = [referer, "https://weibo.com/", "https://www.weibo.com/"];
   for (const currentReferer of referers) {
     try {
@@ -77,15 +78,34 @@ const fetchImageAsDataUrl = async (
       const data = response?.data ?? response;
       const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
       const mimeType = String(
-        response?.headers?.["content-type"] || "image/jpeg",
+        response?.headers?.["content-type"] || "image/png",
       ).split(";")[0];
       if (!buffer.length) continue;
-      return `data:${mimeType};base64,${buffer.toString("base64")}`;
+      return { buffer, mimeType };
     } catch {
       continue;
     }
   }
   return null;
+};
+
+const fetchImageAsDataUrl = async (
+  ctx: Context,
+  url: string,
+  cookieString: string | null,
+  referer = "https://weibo.com/",
+): Promise<string | null> => {
+  const normalizedUrl = normalizeImageUrl(url);
+  if (!normalizedUrl) return "";
+  if (normalizedUrl.startsWith("data:")) return normalizedUrl;
+  const fetched = await fetchImageBinary(
+    ctx,
+    normalizedUrl,
+    cookieString,
+    referer,
+  );
+  if (!fetched) return null;
+  return `data:${fetched.mimeType};base64,${fetched.buffer.toString("base64")}`;
 };
 
 const resolveImageUrl = async (
@@ -106,6 +126,56 @@ const resolveImageUrl = async (
     await sleep(CONSTANTS.IMAGE_FETCH_DELAY_MS);
   }
   return resolved;
+};
+
+const collectPostFaces = (posts: NormalizedPost[]) => {
+  const faces = new Map<string, { value: string; url: string }>();
+  const addText = (text?: string) => {
+    for (const face of collectWeiboFaces(text || "")) {
+      if (!faces.has(face.value)) faces.set(face.value, face);
+    }
+  };
+  const walkComments = (comments?: NormalizedComment[]) => {
+    comments?.forEach((comment) => {
+      addText(comment.text);
+      walkComments(comment.replies);
+    });
+  };
+  for (const post of posts) {
+    addText(post.text);
+    addText(post.retweeted?.text);
+    walkComments(post.comments);
+  }
+  return [...faces.values()];
+};
+
+const resolveWeiboFace = async (
+  ctx: Context,
+  value: string,
+  url: string,
+  cookieString: string | null,
+  cache: Map<string, string>,
+) => {
+  if (cache.has(url)) return cache.get(url)!;
+
+  const cached = await loadCachedFace(value, url);
+  if (cached) {
+    cache.set(url, cached);
+    return cached;
+  }
+
+  const fetched = await fetchImageBinary(ctx, url, cookieString, "https://weibo.com/");
+  if (!fetched) {
+    cache.set(url, url);
+    return url;
+  }
+
+  const dataUrl = await saveCachedFace(value, url, fetched.buffer, fetched.mimeType);
+  cache.set(url, dataUrl);
+  if (CONSTANTS.IMAGE_FETCH_DELAY_MS > 0) {
+    await sleep(CONSTANTS.IMAGE_FETCH_DELAY_MS);
+  }
+  return dataUrl;
 };
 
 export const prepareDrawerAssets = async (
@@ -288,5 +358,16 @@ export const prepareDrawerAssets = async (
     });
   }
 
-  return { profile: resolvedProfile, timeline: resolvedTimeline };
+  const faceSrc: Record<string, string> = {};
+  for (const face of collectPostFaces(normalizedTimeline)) {
+    faceSrc[face.url] = await resolveWeiboFace(
+      ctx,
+      face.value,
+      face.url,
+      cookieString,
+      cache,
+    );
+  }
+
+  return { profile: resolvedProfile, timeline: resolvedTimeline, faceSrc };
 };

@@ -1,6 +1,7 @@
 import { CONSTANTS } from "../../util/constants";
 import { escapeHtml } from "../../util/html";
 import { formatWeiboDate } from "../../util/weibo-date";
+import { formatWeiboTextHtml } from "../../util/weibo-face";
 import type { ActivityType, NormalizedPost, NormalizedRetweetedPost } from "../timeline/types";
 import type { ProfileData, ResolvedComment, ResolvedMediaPost } from "./types";
 
@@ -10,8 +11,10 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   like: "最近赞过",
 };
 
-const formatPostText = (text: string) =>
-  escapeHtml(text || "").replace(/\n/g, "<br/>");
+type FaceSrcMap = Record<string, string>;
+
+const formatPostText = (text: string, faceSrc: FaceSrcMap) =>
+  formatWeiboTextHtml(text, faceSrc);
 
 const isMeaningfulRetweetComment = (text: string) =>
   Boolean(text?.trim()) && text.trim() !== "转发微博";
@@ -72,6 +75,7 @@ const buildQuotedPost = (
     resolvedMediaCover?: string;
   },
   fallbackAvatar: string,
+  faceSrc: FaceSrcMap,
 ) => {
   const quotedUser = retweeted.user || {};
   const quotedAvatar =
@@ -85,7 +89,7 @@ const buildQuotedPost = (
         <div class="quoted-post-time">${escapeHtml(retweeted.createdAtText || retweeted.createdAt || "")} ${escapeHtml(retweeted.source || "")} ${escapeHtml(retweeted.region_name || "")}</div>
       </div>
     </div>
-    <div class="quoted-post-text">${formatPostText(retweeted.text)}</div>
+    <div class="quoted-post-text">${formatPostText(retweeted.text, faceSrc)}</div>
     ${buildPostMedia(retweeted)}
   </div>`;
 };
@@ -93,8 +97,9 @@ const buildQuotedPost = (
 const buildCommentItem = (
   comment: ResolvedComment,
   fallbackAvatar: string,
+  faceSrc: FaceSrcMap,
   nested = false,
-) => {
+): string => {
   const user = comment.user || {};
   const avatar =
     comment.resolvedAvatar ||
@@ -110,7 +115,7 @@ const buildCommentItem = (
     : "";
   const replies = comment.replies?.length
     ? `<div class="comment-replies">${comment.replies
-        .map((reply) => buildCommentItem(reply, fallbackAvatar, true))
+        .map((reply) => buildCommentItem(reply, fallbackAvatar, faceSrc, true))
         .join("")}</div>`
     : "";
 
@@ -123,7 +128,7 @@ const buildCommentItem = (
         <span class="comment-time">${escapeHtml(comment.createdAtText || comment.createdAt || "")}</span>
         ${likes}
       </div>
-      <div class="comment-text">${formatPostText(comment.text)}</div>
+      <div class="comment-text">${formatPostText(comment.text, faceSrc)}</div>
       ${replies}
     </div>
   </div>`;
@@ -132,11 +137,12 @@ const buildCommentItem = (
 const buildPostComments = (
   comments: ResolvedComment[] | undefined,
   fallbackAvatar: string,
+  faceSrc: FaceSrcMap,
 ) => {
   if (!comments?.length) return "";
   return `<div class="post-comments">
     <div class="post-comments__title">最新评论</div>
-    ${comments.map((comment) => buildCommentItem(comment, fallbackAvatar)).join("")}
+    ${comments.map((comment) => buildCommentItem(comment, fallbackAvatar, faceSrc)).join("")}
   </div>`;
 };
 
@@ -155,6 +161,7 @@ const buildActivityBadge = (post: NormalizedPost) => {
 const buildWeiboCardHtml = (
   profile: ProfileData,
   normalizedTimeline: ResolvedMediaPost[],
+  faceSrc: FaceSrcMap = {},
 ) => {
   const user = profile?.user || {};
   const avatar =
@@ -167,15 +174,15 @@ const buildWeiboCardHtml = (
         postUser.avatar_large || postUser.profile_image_url || avatar;
       const retweetComment =
         post.activityType === "retweet" && isMeaningfulRetweetComment(post.text)
-          ? `<div class="post-text post-text--comment">${formatPostText(post.text)}</div>`
+          ? `<div class="post-text post-text--comment">${formatPostText(post.text, faceSrc)}</div>`
           : "";
       const quotedPost =
         post.activityType === "retweet" && post.retweeted
-          ? buildQuotedPost(post.retweeted, postAvatar)
+          ? buildQuotedPost(post.retweeted, postAvatar, faceSrc)
           : "";
       const originalBody =
         post.activityType !== "retweet"
-          ? `<div class="post-text">${formatPostText(post.text)}</div>
+          ? `<div class="post-text">${formatPostText(post.text, faceSrc)}</div>
              ${buildPostMedia(post)}`
           : "";
 
@@ -197,7 +204,7 @@ const buildWeiboCardHtml = (
             <span>评论 ${post.comments_count ?? 0}</span>
             <span>赞 ${post.attitudes_count ?? 0}</span>
           </div>
-          ${buildPostComments(post.comments, postAvatar)}
+          ${buildPostComments(post.comments, postAvatar, faceSrc)}
         </article>
       `;
     })
@@ -359,6 +366,13 @@ const TIMELINE_PAGE_STYLES = `
       white-space: pre-wrap;
       word-break: break-word;
       margin-bottom: 10px;
+    }
+    .weibo-face {
+      width: 1.25em;
+      height: 1.25em;
+      vertical-align: -0.2em;
+      display: inline;
+      margin: 0 1px;
     }
     .post-text--comment {
       margin-bottom: 8px;
@@ -560,13 +574,20 @@ const wrapTimelinePage = (bodyContent: string) => `<!DOCTYPE html>
 export const buildTimelineHtml = (
   profile: ProfileData,
   normalizedTimeline: ResolvedMediaPost[],
-) => wrapTimelinePage(buildWeiboCardHtml(profile, normalizedTimeline));
+  faceSrc: FaceSrcMap = {},
+) => wrapTimelinePage(buildWeiboCardHtml(profile, normalizedTimeline, faceSrc));
 
 export const buildMultiTimelineHtml = (
-  entries: { profile: ProfileData; timeline: ResolvedMediaPost[] }[],
+  entries: {
+    profile: ProfileData;
+    timeline: ResolvedMediaPost[];
+    faceSrc?: FaceSrcMap;
+  }[],
 ) =>
   wrapTimelinePage(
     `<div id="weibo-cards">${entries
-      .map(({ profile, timeline }) => buildWeiboCardHtml(profile, timeline))
+      .map(({ profile, timeline, faceSrc }) =>
+        buildWeiboCardHtml(profile, timeline, faceSrc),
+      )
       .join("")}</div>`,
   );

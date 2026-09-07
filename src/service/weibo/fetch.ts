@@ -1,15 +1,10 @@
-import { Context, Session } from "koishi";
-import { writeFile } from "node:fs/promises";
-import { normalizeComments } from "./comment/normalizer";
-import type { WeiboCommentsResult } from "./comment/types";
-import { createWeiboHttp } from "./weibo-http";
+import { Context } from "koishi";
+import { normalizeComments } from "../comment/normalizer";
+import type { WeiboCommentsResult } from "../comment/types";
+import { createWeiboHttp, requestWeiboApi } from "./http";
 
 /** 拉取指定 UID 的微博主页、时间线与点赞列表 */
-export const getWeiboByUID = async (
-  weiboUID: string,
-  ctx: Context,
-  _session?: Session,
-) => {
+export const getWeiboByUID = async (weiboUID: string, ctx: Context) => {
   const weiboHttp = await createWeiboHttp(
     ctx,
     `https://weibo.com/u/${weiboUID}`,
@@ -19,31 +14,37 @@ export const getWeiboByUID = async (
   }
 
   const profilePath = `/ajax/profile/info?uid=${weiboUID}&scene=profile`;
-  const fetchProfile = () =>
-    weiboHttp
-      .get(profilePath)
-      .then((res: any) => res?.data || null);
+  const fetchProfile = async () => {
+    const res = await requestWeiboApi(
+      ctx,
+      weiboHttp,
+      profilePath,
+      `profile uid=${weiboUID}`,
+    );
+    return res?.data || null;
+  };
 
-  let profile;
-  try {
-    profile = await fetchProfile();
-  } catch {
+  let profile = await fetchProfile();
+  if (!profile) {
+    ctx.logger.warn(`[weibo api] profile 首次失败，正在重试 uid=${weiboUID}`);
     profile = await fetchProfile();
   }
 
-  const timeline = await weiboHttp
-    .get(`/ajax/statuses/mymblog?uid=${weiboUID}&page=1&feature=0`)
-    .then((res: any) => res?.data || null);
+  const timelineRes = await requestWeiboApi(
+    ctx,
+    weiboHttp,
+    `/ajax/statuses/mymblog?uid=${weiboUID}&page=1&feature=0`,
+    `timeline uid=${weiboUID}`,
+  );
+  const timeline = timelineRes?.data || null;
 
-  const like = await weiboHttp
-    .get(`/ajax/statuses/likelist?uid=${weiboUID}&page=1&with_total=true`)
-    .then((res: any) => res?.data || null);
-
-  await Promise.all([
-    writeFile("profile.json", JSON.stringify(profile, null, 2), "utf-8"),
-    writeFile("timeline.json", JSON.stringify(timeline, null, 2), "utf-8"),
-    writeFile("like.json", JSON.stringify(like, null, 2), "utf-8"),
-  ]);
+  const likeRes = await requestWeiboApi(
+    ctx,
+    weiboHttp,
+    `/ajax/statuses/likelist?uid=${weiboUID}&page=1&with_total=true`,
+    `like uid=${weiboUID}`,
+  );
+  const like = likeRes?.data || null;
 
   return { profile, timeline, like };
 };
@@ -84,9 +85,13 @@ export const getWeiboCommentsByWeiboID = async (
     params.set("max_id", options.maxId);
   }
 
-  const response = await weiboHttp
-    .get(`/ajax/statuses/buildComments?${params.toString()}`)
-    .then((res: any) => res ?? null);
+  const path = `/ajax/statuses/buildComments?${params.toString()}`;
+  const response = await requestWeiboApi(
+    ctx,
+    weiboHttp,
+    path,
+    `comments uid=${weiboUID} id=${weiboID}`,
+  );
 
   if (!response) {
     return null;

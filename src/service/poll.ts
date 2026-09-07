@@ -1,17 +1,17 @@
 import { $, Context, Session } from "koishi";
+import type { Config } from "../index";
+import { CONSTANTS } from "../util/constants";
+import { formatPuppeteerError } from "../util/puppeteer";
+import { saveScreenshotDebug } from "../util/save-screenshot";
+import { sendImg, sendMsg } from "../util/send-msg";
+import { attachCommentsToEntries } from "./comment";
 import { drawEntryImages, type TimelineEntry } from "./drawer";
 import {
   filterTimelineWithinMinutes,
   formatEntryMessages,
   mergeActivityTimeline,
 } from "./timeline";
-import { attachCommentsToEntries } from "./comment/fetch-for-timeline";
-import { getWeiboByUID } from "./weibo-fetch";
-import { formatPuppeteerError } from "../util/puppeteer-cookie";
-import { CONSTANTS } from "../util/constants";
-import { sendImg, sendMsg } from "../util/send-msg";
-import { saveScreenshotDebug } from "../util/save-screenshot";
-import type { Config } from "../index";
+import { formatWeiboHttpError, getWeiboByUID } from "./weibo";
 
 type SendMsgSession = {
   sendQueued: (content: any) => Promise<any>;
@@ -44,8 +44,20 @@ export const createPollWeibo = (
     const entryByUID = new Map<string, TimelineEntry | null>();
     await Promise.all(
       weiboUIDs.map(async (weiboUID) => {
-        const result = await getWeiboByUID(weiboUID, ctx);
+        let result: Awaited<ReturnType<typeof getWeiboByUID>> = null;
+        try {
+          result = await getWeiboByUID(weiboUID, ctx);
+        } catch (error) {
+          ctx.logger.error(
+            `[weibo api] 拉取失败 uid=${weiboUID} ${formatWeiboHttpError(error)}`,
+          );
+          entryByUID.set(weiboUID, null);
+          return;
+        }
         if (!result?.profile || !result?.timeline) {
+          ctx.logger.warn(
+            `[weibo api] 数据不完整 uid=${weiboUID} profile=${Boolean(result?.profile)} timeline=${Boolean(result?.timeline)}`,
+          );
           entryByUID.set(weiboUID, null);
           return;
         }

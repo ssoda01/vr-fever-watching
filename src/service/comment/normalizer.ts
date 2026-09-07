@@ -7,7 +7,9 @@ const extractCommentText = (comment: any): string => {
   if (comment?.text_raw) return comment.text_raw;
   const text = String(comment?.text || "");
   return text
-    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, "$1")
+    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, (_, alt: string) =>
+      /^\[[^\]]+\]$/.test(alt) ? alt : `[${alt}]`,
+    )
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .trim();

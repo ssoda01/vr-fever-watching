@@ -4,4 +4,7 @@ const getWaitMs = (minutes: number) => {
   }
   return minutes * 60 * 1000;
 };
-export { getWaitMs };
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export { getWaitMs, wait };
