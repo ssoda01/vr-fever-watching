@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { CONSTANTS } from "./constants";
+import { pruneFilesOlderThan } from "./file-prune";
 
 const SCREENSHOT_DEBUG_DIR = path.join(
   process.cwd(),
@@ -21,11 +23,20 @@ export interface SavedScreenshot {
   sizeKB: string;
 }
 
+export async function pruneScreenshotDebug() {
+  await fs.mkdir(SCREENSHOT_DEBUG_DIR, { recursive: true });
+  return pruneFilesOlderThan(
+    SCREENSHOT_DEBUG_DIR,
+    CONSTANTS.SCREENSHOT_KEEP_MS,
+  );
+}
+
 export async function saveScreenshotDebug(
   buffer: Buffer,
   meta: ScreenshotSaveMeta,
 ): Promise<SavedScreenshot> {
   await fs.mkdir(SCREENSHOT_DEBUG_DIR, { recursive: true });
+  await pruneScreenshotDebug();
   const safeName = (meta.name || meta.uid || "unknown").replace(
     /[^\w\u4e00-\u9fff-]/g,
     "_",

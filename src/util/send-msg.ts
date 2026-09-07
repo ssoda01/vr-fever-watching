@@ -1,10 +1,13 @@
-import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { Context, h, Session } from "koishi";
+import {} from "@koishijs/plugin-server";
+import { pruneFilesOlderThan } from "./file-prune";
 
 const SEND_CACHE_DIR = path.join(process.cwd(), "data", "weibo-send-cache");
 const SEND_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const IMAGE_ROUTE = "/weibo-images";
+const DEFAULT_IMAGE_BASE_URL = "http://host.docker.internal:5140";
 
 const detectImageExt = (buffer: Buffer) => {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8) {
@@ -13,43 +16,86 @@ const detectImageExt = (buffer: Buffer) => {
   return "png";
 };
 
-const formatSendImageError = (error: unknown, sizeKB: string) => {
-  const code = (error as { code?: number })?.code;
-  const message = error instanceof Error ? error.message : String(error);
-  const brief = message.includes("base64://")
-    ? "send_group_msg failed"
-    : message.slice(0, 200);
-  return `发送图片失败${code != null ? ` retcode=${code}` : ""} (${sizeKB} KB): ${brief}`;
+const mimeOf = (ext: string) => (ext === "png" ? "image/png" : "image/jpeg");
+
+const trimSlash = (url: string) => url.replace(/\/+$/, "");
+
+const resolveImageBaseUrl = (override?: string) => {
+  if (override?.trim()) return trimSlash(override.trim());
+  return DEFAULT_IMAGE_BASE_URL;
 };
 
-async function pruneSendCache() {
-  const files = await readdir(SEND_CACHE_DIR).catch(() => []);
-  const now = Date.now();
-  await Promise.all(
-    files.map(async (name) => {
-      const filePath = path.join(SEND_CACHE_DIR, name);
-      const info = await stat(filePath).catch(() => null);
-      if (!info || now - info.mtimeMs < SEND_CACHE_MAX_AGE_MS) return;
-      await unlink(filePath).catch(() => {});
-    }),
-  );
+const isSendFail = (error: unknown) => {
+  const code = (error as { code?: number })?.code;
+  const message = error instanceof Error ? error.message : String(error);
+  return code === 1200 || message.includes("retcode=1200");
+};
+
+const formatSendImageError = (
+  error: unknown,
+  sizeKB: string,
+  target: string,
+) => {
+  const code = (error as { code?: number })?.code;
+  return `发送图片失败${code != null ? ` retcode=${code}` : ""} (${sizeKB} KB) ${target}`;
+};
+
+async function writeSendCache(img_buffer: Buffer) {
+  await mkdir(SEND_CACHE_DIR, { recursive: true });
+  await pruneFilesOlderThan(SEND_CACHE_DIR, SEND_CACHE_MAX_AGE_MS);
+  const ext = detectImageExt(img_buffer);
+  const fileName = `weibo-${Date.now()}.${ext}`;
+  const filePath = path.join(SEND_CACHE_DIR, fileName);
+  await writeFile(filePath, img_buffer);
+  return { fileName, filePath, ext };
+};
+
+/** Docker 里的 NapCat 读不了宿主机路径，改走 Koishi HTTP */
+export function registerWeiboImageRoute(ctx: Context) {
+  ctx.server.get(`${IMAGE_ROUTE}/:name`, async (scope) => {
+    const name = path.basename(String(scope.params.name || ""));
+    if (!/^weibo-\d+\.(jpg|jpeg|png)$/i.test(name)) {
+      scope.status = 404;
+      return;
+    }
+    const filePath = path.join(SEND_CACHE_DIR, name);
+    const info = await stat(filePath).catch(() => null);
+    if (!info?.isFile()) {
+      scope.status = 404;
+      return;
+    }
+    const body = await readFile(filePath);
+    scope.type = mimeOf(path.extname(name).slice(1).toLowerCase());
+    scope.length = body.length;
+    return (scope.body = body);
+  });
 }
 
-/** 写成本地文件再发 file://，避免 OneBot 把整段 base64 塞进 send_group_msg */
-const sendImg = async (img_buffer: Buffer, session: Session) => {
-  await mkdir(SEND_CACHE_DIR, { recursive: true });
-  await pruneSendCache();
-  const ext = detectImageExt(img_buffer);
-  const filePath = path.join(
-    SEND_CACHE_DIR,
-    `${Date.now()}-${process.hrtime.bigint().toString()}.${ext}`,
-  );
-  await writeFile(filePath, img_buffer);
+/**
+ * 发给 NapCat 的必须是它能访问的 HTTP 地址。
+ * 协议端在 Docker 时，宿主机路径 /Users/... 会 ENOENT → retcode 1200。
+ */
+const sendImg = async (
+  ctx: Context,
+  img_buffer: Buffer,
+  session: Session,
+  imageBaseUrl?: string,
+) => {
+  const { fileName, ext } = await writeSendCache(img_buffer);
   const sizeKB = (img_buffer.length / 1024).toFixed(1);
+  const url = `${resolveImageBaseUrl(imageBaseUrl)}${IMAGE_ROUTE}/${fileName}`;
   try {
-    return await session.sendQueued(h.image(pathToFileURL(filePath).href));
+    return await session.sendQueued(h.image(url));
   } catch (error) {
-    throw new Error(formatSendImageError(error, sizeKB));
+    if (!isSendFail(error)) {
+      throw new Error(formatSendImageError(error, sizeKB, url));
+    }
+    ctx.logger.warn(`HTTP 发图失败，改用内嵌图片 ${fileName}`);
+    try {
+      return await session.sendQueued(h.image(img_buffer, mimeOf(ext)));
+    } catch (fallbackError) {
+      throw new Error(formatSendImageError(fallbackError, sizeKB, url));
+    }
   }
 };
 

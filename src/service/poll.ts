@@ -147,7 +147,7 @@ export const createPollWeibo = (
                 `截图已保存: ${saved.filePath} (${saved.sizeKB} KB, ${name} ${i + 1}/${images.length})`,
               );
             }
-            await sendImg(image, session as Session);
+            await sendImg(ctx, image, session as Session, config.imageBaseUrl);
           }
         } catch (error) {
           ctx.logger.warn(formatPuppeteerError(error));

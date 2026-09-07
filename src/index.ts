@@ -1,20 +1,22 @@
 import { Context, Schema } from "koishi";
+import {} from "@koishijs/plugin-server";
 import { registerWeiboCommand } from "./commands/weibo";
 import { extendModels } from "./model";
 import { createLoginStatusWatch } from "./service/login";
 import { createPollWeibo } from "./service/poll";
 import { ensurePuppeteerBrowser } from "./util/puppeteer";
-import { createGroupSender } from "./util/send-msg";
+import { pruneScreenshotDebug } from "./util/save-screenshot";
+import { createGroupSender, registerWeiboImageRoute } from "./util/send-msg";
 import { getWaitMs } from "./util/timer";
 
 export const name = "vr-fever";
 export type { WeiboCookie, WeiboSubscribe } from "./model";
 
-export const using = ["puppeteer", "database", "http"];
+export const using = ["puppeteer", "database", "http", "server"];
 
 export const inject = {
   required: [...using],
-  optional: ["console", "server"],
+  optional: ["console"],
 };
 
 export interface Config {
@@ -23,6 +25,7 @@ export interface Config {
   waitMinutes: number;
   isTextMode: boolean;
   isDebugMode: boolean;
+  imageBaseUrl: string;
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -38,10 +41,17 @@ export const Config: Schema<Config> = Schema.object({
   isDebugMode: Schema.boolean()
     .default(false)
     .description("开启后保存调试截图（登录二维码、微博推送截图等）"),
+  imageBaseUrl: Schema.string()
+    .role("link")
+    .default("http://host.docker.internal:5140")
+    .description(
+      "NapCat 拉取图片用的 Koishi 地址。协议端在 Docker 时填 http://host.docker.internal:端口",
+    ),
 });
 
 export async function apply(ctx: Context, config: Config) {
   extendModels(ctx);
+  registerWeiboImageRoute(ctx);
 
   const sendToGroup = createGroupSender(ctx, config.adminAccount);
   const pollWeibo = createPollWeibo(ctx, config, sendToGroup);
@@ -53,6 +63,17 @@ export async function apply(ctx: Context, config: Config) {
 
   ctx.setInterval(watchLogin, getWaitMs(30));
   ctx.setInterval(pollWeibo, getWaitMs(config.waitMinutes));
+  ctx.setInterval(async () => {
+    const deleted = await pruneScreenshotDebug();
+    if (deleted) {
+      ctx.logger.info(`已清理 ${deleted} 张超过 7 天的调试截图`);
+    }
+  }, getWaitMs(24 * 60));
+
+  const deleted = await pruneScreenshotDebug();
+  if (deleted) {
+    ctx.logger.info(`已清理 ${deleted} 张超过 7 天的调试截图`);
+  }
 
   await ensurePuppeteerBrowser(ctx);
   registerWeiboCommand(ctx, config, pollWeibo);

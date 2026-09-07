@@ -30,6 +30,9 @@ const IMAGE_LOAD_TIMEOUT_MS = 5000;
 const RENDER_CARD_WIDTH = 320;
 /** 每张截图最多包含的微博条数，超出则拆成多张图 */
 const POSTS_PER_SCREENSHOT = 3;
+/** 截图长边上限（px）。QQ NT 对超长图会 rich media transfer failed */
+const SCREENSHOT_MAX_EDGE = 1920;
+const SCREENSHOT_DPR = 1;
 
 export const CONSTANTS = {
   WEIBO_PASSPORT_URL,
@@ -48,6 +51,10 @@ export const CONSTANTS = {
   IMAGE_LOAD_TIMEOUT_MS,
   RENDER_CARD_WIDTH,
   POSTS_PER_SCREENSHOT,
+  SCREENSHOT_MAX_EDGE,
+  SCREENSHOT_DPR,
+  /** 调试截图保留时间 */
+  SCREENSHOT_KEEP_MS: 7 * 24 * 60 * 60 * 1000,
 };
 const IS_WEIBO_UID = /^[0-9]{1,10}$/;
 const IS_QRPIC = "^https?:\/\/[^/]*qr[^/]*\.(com|cn)";

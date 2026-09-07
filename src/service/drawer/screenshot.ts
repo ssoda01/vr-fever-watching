@@ -39,21 +39,46 @@ const toImageBuffer = (output: unknown) => {
   return null;
 };
 
+const toClip = (box: { x: number; y: number; width: number; height: number }) => ({
+  x: Math.max(0, Math.floor(box.x)),
+  y: Math.max(0, Math.floor(box.y)),
+  width: Math.max(1, Math.ceil(box.width)),
+  height: Math.max(1, Math.ceil(box.height)),
+});
+
 const screenshotSelector = async (page: any, selector: string) => {
   await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
   const el = await page.$(selector);
   if (!el) return null;
-  const box = await el.boundingBox();
+  let box = await el.boundingBox();
   if (!box || box.width < 1 || box.height < 1) return null;
+
+  await page.setViewport({
+    width: Math.max(400, Math.ceil(box.width) + 48),
+    height: Math.max(800, Math.min(1200, Math.ceil(box.height) + 48)),
+    deviceScaleFactor: CONSTANTS.SCREENSHOT_DPR,
+  });
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+  box = await el.boundingBox();
+  if (!box || box.width < 1 || box.height < 1) return null;
+
+  const longEdge =
+    Math.max(box.width, box.height) * CONSTANTS.SCREENSHOT_DPR;
+  if (longEdge > CONSTANTS.SCREENSHOT_MAX_EDGE) {
+    const zoom = CONSTANTS.SCREENSHOT_MAX_EDGE / longEdge;
+    await el.evaluate((node: HTMLElement, z: number) => {
+      node.style.zoom = String(z);
+    }, zoom);
+    box = await el.boundingBox();
+    if (!box || box.width < 1 || box.height < 1) return null;
+  }
+
   const output = await page.screenshot({
     type: "jpeg",
-    quality: 85,
-    clip: {
-      x: Math.max(0, Math.floor(box.x)),
-      y: Math.max(0, Math.floor(box.y)),
-      width: Math.max(1, Math.ceil(box.width)),
-      height: Math.max(1, Math.ceil(box.height)),
-    },
+    quality: 80,
+    captureBeyondViewport: true,
+    clip: toClip(box),
   });
   return toImageBuffer(output);
 };

@@ -38,11 +38,11 @@
       "required": [
         "puppeteer",
         "database",
-        "http"
+        "http",
+        "server"
       ],
       "optional": [
-        "console",
-        "server"
+        "console"
       ]
     },
     "locales": [

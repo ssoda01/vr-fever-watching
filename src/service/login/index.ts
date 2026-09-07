@@ -95,6 +95,7 @@ export const getQRcode = async (
           return false;
         }
         await sendImg(
+          ctx,
           Buffer.from(
             qr.dataUrl.replace(/^data:image\/\w+;base64,/, ""),
             "base64",
