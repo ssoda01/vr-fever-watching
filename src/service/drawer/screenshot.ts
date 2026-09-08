@@ -23,6 +23,16 @@ const chunkTimeline = <T>(items: T[], size: number): T[][] => {
 
 const waitForImages = async (page: any, timeoutMs: number) => {
   await page.evaluate((timeout) => {
+    const withTimeout = (promise: Promise<unknown>) =>
+      Promise.race([
+        promise,
+        new Promise<void>((resolve) => setTimeout(resolve, timeout)),
+      ]);
+
+    const waitFonts = document.fonts?.ready
+      ? withTimeout(document.fonts.ready)
+      : Promise.resolve();
+
     const waitImage = (img: HTMLImageElement) =>
       new Promise<void>((resolve) => {
         if (img.complete && img.naturalWidth > 0) return resolve();
@@ -32,7 +42,10 @@ const waitForImages = async (page: any, timeoutMs: number) => {
         setTimeout(done, timeout);
       });
 
-    return Promise.all(Array.from(document.images).map(waitImage));
+    return Promise.all([
+      waitFonts,
+      ...Array.from(document.images).map(waitImage),
+    ]);
   }, timeoutMs);
 };
 

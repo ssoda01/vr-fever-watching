@@ -1,6 +1,5 @@
 我就跟你实话实说了
 
-
 # koishi-plugin-vr-fever
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-vr-fever?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-vr-fever)
@@ -10,18 +9,40 @@
 ## weibo相关
 
 期间内同博主多条微博&点赞（按发布时间预估点赞），并展示评论
+
 使用指南: `@[机器人] weibo help`
 
-我觉得无论如何这个插件不应该被打一星吧（泪
+- 主贴、转帖（带评论）
+- 最近点赞（不全）
 
-照搬了以下仓库，进行魔改。如果你追求更好的使用体验，请使用它们：
+## 更新记录
+
+| No. | Item                 | Status        |
+| --- | -------------------- | ------------- |
+| 1   | 没有办法展示微博表情 | 0.0.6中已修复 |
+| 2   | 缺少emoji字体        | 0.0.7中已修复 |
+
+## 其他
+
+1. Linux安装Emoji字体文件
+
+    ```bash
+    # Debian / Ubuntu
+    apt install fonts-noto-color-emoji fonts-noto-cjk
+
+    # Fedora
+    dnf install google-noto-emoji-fonts google-noto-sans-cjk-fonts
+
+    # Arch
+    pacman -S noto-fonts-emoji noto-fonts-cjk
+    ```
+
+2. 微博系列逻辑照搬了以下仓库，并进行魔改。如果你追求更好的使用体验，请使用它们：
 
 - https://github.com/moehuhu/weibo-monitor#readme
 - https://github.com/MingxiaGuo/koishi-plugin-weibo-notify#readme
 
-## 其他
+## TODO
 
-1. 没有办法展示微博表情
-2. 缺少emoji字体
-
-tbd
+1. b站动态
+2. b站直播的弹幕流

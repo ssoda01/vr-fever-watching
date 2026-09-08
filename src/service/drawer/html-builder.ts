@@ -233,10 +233,49 @@ const buildWeiboCardHtml = (
   </div>`;
 };
 
+/** emoji 必须排在 CJK 之前，否则缺字形会被画成「？」 */
+const EMOJI_FONT_FACE = `
+    @font-face {
+      font-family: "Weibo Emoji";
+      src: local("Noto Color Emoji"),
+           local("Noto Emoji"),
+           local("Twemoji Mozilla"),
+           local("Apple Color Emoji"),
+           local("Segoe UI Emoji"),
+           local("Segoe UI Symbol");
+      unicode-range: U+00A9, U+00AE, U+200D, U+203C, U+2049, U+20E3, U+2122, U+2139,
+        U+2194-2199, U+21A9-21AA, U+231A-231B, U+2328, U+23CF, U+23E9-23F3, U+23F8-23FA,
+        U+24C2, U+25AA-25AB, U+25B6, U+25C0, U+25FB-25FE, U+2600-27BF, U+2934-2935,
+        U+2B05-2B07, U+2B1B-2B1C, U+2B50, U+2B55, U+3030, U+303D, U+3297, U+3299,
+        U+FE0E, U+FE0F, U+1F000-1FAFF;
+    }`;
+
+const TEXT_FONT_STACK = [
+  '"Weibo Emoji"',
+  '"Noto Color Emoji"',
+  '"Noto Emoji"',
+  '"Twemoji Mozilla"',
+  '"Apple Color Emoji"',
+  '"Segoe UI Emoji"',
+  "emoji",
+  '"Noto Sans CJK SC"',
+  '"Noto Sans SC"',
+  '"Source Han Sans SC"',
+  '"WenQuanYi Zen Hei"',
+  '"WenQuanYi Micro Hei"',
+  '"PingFang SC"',
+  '"Hiragino Sans GB"',
+  '"Microsoft YaHei"',
+  "system-ui",
+  "sans-serif",
+].join(", ");
+
 const TIMELINE_PAGE_STYLES = `
+    ${EMOJI_FONT_FACE}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-family: ${TEXT_FONT_STACK};
+      font-variant-emoji: emoji;
       background: #f3f4f6;
       padding: 24px;
       color: #1f2328;
