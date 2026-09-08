@@ -108,7 +108,7 @@ const buildCommentItem = (
     fallbackAvatar;
   const likes =
     comment.likesCount && comment.likesCount > 0
-      ? `<span class="comment-likes">👍 ${comment.likesCount}</span>`
+      ? `<span class="comment-likes"><span class="emoji">👍</span> ${comment.likesCount}</span>`
       : "";
   const authorBadge = comment.isAuthor
     ? `<span class="comment-author">博主</span>`
@@ -233,7 +233,20 @@ const buildWeiboCardHtml = (
   </div>`;
 };
 
-/** emoji 必须排在 CJK 之前，否则缺字形会被画成「？」 */
+/** 日期、数字、昵称用 UI 字体，避免彩色 emoji 字体把字宽撑开 */
+const UI_FONT_STACK = [
+  '"Noto Sans CJK SC"',
+  '"Noto Sans SC"',
+  '"Source Han Sans SC"',
+  '"WenQuanYi Zen Hei"',
+  '"WenQuanYi Micro Hei"',
+  '"PingFang SC"',
+  '"Hiragino Sans GB"',
+  '"Microsoft YaHei"',
+  "system-ui",
+  "sans-serif",
+].join(", ");
+
 const EMOJI_FONT_FACE = `
     @font-face {
       font-family: "Weibo Emoji";
@@ -250,7 +263,8 @@ const EMOJI_FONT_FACE = `
         U+FE0E, U+FE0F, U+1F000-1FAFF;
     }`;
 
-const TEXT_FONT_STACK = [
+const CONTENT_FONT_STACK = `"Weibo Emoji", ${UI_FONT_STACK}`;
+const EMOJI_FONT_STACK = [
   '"Weibo Emoji"',
   '"Noto Color Emoji"',
   '"Noto Emoji"',
@@ -258,24 +272,13 @@ const TEXT_FONT_STACK = [
   '"Apple Color Emoji"',
   '"Segoe UI Emoji"',
   "emoji",
-  '"Noto Sans CJK SC"',
-  '"Noto Sans SC"',
-  '"Source Han Sans SC"',
-  '"WenQuanYi Zen Hei"',
-  '"WenQuanYi Micro Hei"',
-  '"PingFang SC"',
-  '"Hiragino Sans GB"',
-  '"Microsoft YaHei"',
-  "system-ui",
-  "sans-serif",
 ].join(", ");
 
 const TIMELINE_PAGE_STYLES = `
     ${EMOJI_FONT_FACE}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: ${TEXT_FONT_STACK};
-      font-variant-emoji: emoji;
+      font-family: ${UI_FONT_STACK};
       background: #f3f4f6;
       padding: 24px;
       color: #1f2328;
@@ -400,11 +403,16 @@ const TIMELINE_PAGE_STYLES = `
       margin-top: 2px;
     }
     .post-text {
+      font-family: ${CONTENT_FONT_STACK};
       font-size: 15px;
       line-height: 1.7;
       white-space: pre-wrap;
       word-break: break-word;
       margin-bottom: 10px;
+    }
+    .emoji {
+      font-family: ${EMOJI_FONT_STACK};
+      font-variant-emoji: emoji;
     }
     .weibo-face {
       width: 1.25em;
@@ -447,6 +455,7 @@ const TIMELINE_PAGE_STYLES = `
       margin-top: 2px;
     }
     .quoted-post-text {
+      font-family: ${CONTENT_FONT_STACK};
       font-size: 14px;
       line-height: 1.6;
       color: #1f2328;
@@ -577,6 +586,7 @@ const TIMELINE_PAGE_STYLES = `
       margin-left: auto;
     }
     .comment-text {
+      font-family: ${CONTENT_FONT_STACK};
       font-size: 13px;
       line-height: 1.6;
       color: #1f2328;

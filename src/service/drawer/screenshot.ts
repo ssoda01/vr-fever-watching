@@ -1,9 +1,6 @@
 import { Context, h } from "koishi";
 import { CONSTANTS } from "../../util/constants";
-import {
-  ensurePuppeteerBrowser,
-  parsePuppeteerRenderOutput,
-} from "../../util/puppeteer";
+import { ensurePuppeteerBrowser } from "../../util/puppeteer";
 import type { NormalizedPost } from "../timeline/types";
 import {
   buildMultiTimelineHtml,
@@ -62,62 +59,127 @@ const toClip = (box: { x: number; y: number; width: number; height: number }) =>
   height: Math.max(1, Math.ceil(box.height)),
 });
 
+type SliceRange = { top: number; height: number };
+type PostBox = { top: number; height: number };
+
+const maxSliceCssHeight = () =>
+  Math.max(1, Math.floor(CONSTANTS.SCREENSHOT_MAX_EDGE / CONSTANTS.SCREENSHOT_DPR));
+
+/** 优先按微博卡片切开；单条仍超高再竖直切片，避免整图缩放 */
+const planScreenshotSlices = (
+  totalHeight: number,
+  posts: PostBox[],
+  maxHeight: number,
+): SliceRange[] => {
+  if (totalHeight <= maxHeight) {
+    return [{ top: 0, height: totalHeight }];
+  }
+
+  const slices: SliceRange[] = [];
+  const flush = (top: number, end: number) => {
+    const height = end - top;
+    if (height < 1) return;
+    if (height <= maxHeight) {
+      slices.push({ top, height });
+      return;
+    }
+    let y = top;
+    while (y < end - 0.5) {
+      const h = Math.min(maxHeight, end - y);
+      slices.push({ top: y, height: h });
+      y += h;
+    }
+  };
+
+  let sliceTop = 0;
+  let sliceEnd = posts[0]?.top ?? 0;
+
+  for (const post of posts) {
+    const postEnd = post.top + post.height;
+    if (postEnd - sliceTop <= maxHeight) {
+      sliceEnd = postEnd;
+      continue;
+    }
+    flush(sliceTop, sliceEnd > sliceTop ? sliceEnd : post.top);
+    sliceTop = post.top;
+    sliceEnd = postEnd;
+  }
+  flush(sliceTop, Math.max(sliceEnd, totalHeight));
+  return slices.length ? slices : [{ top: 0, height: totalHeight }];
+};
+
 const screenshotSelector = async (page: any, selector: string) => {
   await waitForImages(page, CONSTANTS.IMAGE_LOAD_TIMEOUT_MS);
   const el = await page.$(selector);
-  if (!el) return null;
+  if (!el) return [];
   let box = await el.boundingBox();
-  if (!box || box.width < 1 || box.height < 1) return null;
+  if (!box || box.width < 1 || box.height < 1) return [];
 
   await page.setViewport({
     width: Math.max(400, Math.ceil(box.width) + 48),
-    height: Math.max(800, Math.min(1200, Math.ceil(box.height) + 48)),
+    height: Math.max(800, Math.min(Math.ceil(box.height) + 48, 8000)),
     deviceScaleFactor: CONSTANTS.SCREENSHOT_DPR,
   });
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
   box = await el.boundingBox();
-  if (!box || box.width < 1 || box.height < 1) return null;
+  if (!box || box.width < 1 || box.height < 1) return [];
 
-  const longEdge =
-    Math.max(box.width, box.height) * CONSTANTS.SCREENSHOT_DPR;
-  if (longEdge > CONSTANTS.SCREENSHOT_MAX_EDGE) {
-    const zoom = CONSTANTS.SCREENSHOT_MAX_EDGE / longEdge;
-    await el.evaluate((node: HTMLElement, z: number) => {
-      node.style.zoom = String(z);
-    }, zoom);
-    box = await el.boundingBox();
-    if (!box || box.width < 1 || box.height < 1) return null;
+  const layout = (await page.evaluate((sel: string) => {
+    const root = document.querySelector(sel);
+    if (!root) return null;
+    const rootRect = root.getBoundingClientRect();
+    const posts = Array.from(root.querySelectorAll(".post")).map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        top: rect.top - rootRect.top,
+        height: rect.height,
+      };
+    });
+    return { height: rootRect.height, posts };
+  }, selector)) as { height: number; posts: PostBox[] } | null;
+
+  const ranges = planScreenshotSlices(
+    layout?.height || box.height,
+    layout?.posts || [],
+    maxSliceCssHeight(),
+  );
+
+  const buffers: Buffer[] = [];
+  for (const range of ranges) {
+    const output = await page.screenshot({
+      type: "jpeg",
+      quality: CONSTANTS.SCREENSHOT_JPEG_QUALITY,
+      captureBeyondViewport: true,
+      clip: toClip({
+        x: box.x,
+        y: box.y + range.top,
+        width: box.width,
+        height: range.height,
+      }),
+    });
+    const buffer = toImageBuffer(output);
+    if (buffer) buffers.push(buffer);
   }
-
-  const output = await page.screenshot({
-    type: "jpeg",
-    quality: 80,
-    captureBeyondViewport: true,
-    clip: toClip(box),
-  });
-  return toImageBuffer(output);
+  return buffers;
 };
 
-const renderSelector = async (page: any, selector: string) => {
-  const buffer = await screenshotSelector(page, selector);
-  if (!buffer) return "";
-  return h.image(buffer, "image/jpeg").toString();
-};
-
-const renderHtmlAsImage = async (
+const renderHtmlAsImages = async (
   ctx: Context,
   html: string,
   selector: string,
 ) => {
-  const output = await ctx.puppeteer.render(html, async (page) => {
-    return renderSelector(page, selector);
+  const buffers: Buffer[] = [];
+  await ctx.puppeteer.render(html, async (page) => {
+    const slices = await screenshotSelector(page, selector);
+    buffers.push(...slices);
+    if (!slices[0]) return "";
+    return h.image(slices[0], "image/jpeg").toString();
   });
-  if (!output) return null;
-  return parsePuppeteerRenderOutput(output);
+  return buffers;
 };
 
-export const drawTimeline = async (
+const drawTimelineSlices = async (
   ctx: Context,
   profile: ProfileData,
   normalizedTimeline: NormalizedPost[],
@@ -126,10 +188,19 @@ export const drawTimeline = async (
   const { profile: resolvedProfile, timeline: resolvedTimeline, faceSrc } =
     await prepareDrawerAssets(ctx, profile, normalizedTimeline);
   const html = buildTimelineHtml(resolvedProfile, resolvedTimeline, faceSrc);
-  return renderHtmlAsImage(ctx, html, ".weibo-card");
+  return renderHtmlAsImages(ctx, html, ".weibo-card");
 };
 
-/** 单个博主截图：微博过多时按 POSTS_PER_SCREENSHOT 条拆成多张图 */
+export const drawTimeline = async (
+  ctx: Context,
+  profile: ProfileData,
+  normalizedTimeline: NormalizedPost[],
+) => {
+  const images = await drawTimelineSlices(ctx, profile, normalizedTimeline);
+  return images[0] ?? null;
+};
+
+/** 单个博主截图：微博过多时按 POSTS_PER_SCREENSHOT 条拆成多张图，超长再按高度切开 */
 export const drawEntryImages = async (
   ctx: Context,
   entry: TimelineEntry,
@@ -140,10 +211,7 @@ export const drawEntryImages = async (
   );
   const images: Buffer[] = [];
   for (const chunk of chunks) {
-    const image = await drawTimeline(ctx, entry.profile, chunk);
-    if (image) {
-      images.push(image);
-    }
+    images.push(...(await drawTimelineSlices(ctx, entry.profile, chunk)));
   }
   return images;
 };
@@ -162,5 +230,6 @@ export const drawTimelines = async (ctx: Context, entries: TimelineEntry[]) => {
     );
   }
   const html = buildMultiTimelineHtml(resolvedEntries);
-  return renderHtmlAsImage(ctx, html, "#weibo-cards");
+  const images = await renderHtmlAsImages(ctx, html, "#weibo-cards");
+  return images[0] ?? null;
 };

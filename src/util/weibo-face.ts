@@ -107,17 +107,27 @@ export const saveCachedFace = async (
   return dataUrl;
 };
 
-/** 转义正文后把 [太开心] 替换为 <img class="weibo-face"> */
+const UNICODE_EMOJI_RE =
+  /(?:\p{Regional_Indicator}{2})|(?:\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u20E3)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u20E3)?)*)/gu;
+
+const wrapUnicodeEmoji = (html: string) =>
+  html.replace(
+    UNICODE_EMOJI_RE,
+    (emoji) => `<span class="emoji">${emoji}</span>`,
+  );
+
+/** 转义正文后把 [太开心] 替换为 <img class="weibo-face">，Unicode emoji 包进 .emoji */
 export const formatWeiboTextHtml = (
   text: string,
   srcByUrl: Record<string, string> = {},
 ): string => {
   const escaped = escapeHtml(text || "").replace(/\n/g, "<br/>");
-  return escaped.replace(createWeiboFaceRegex(), (all, value: string) => {
+  const withFaces = escaped.replace(createWeiboFaceRegex(), (all, value: string) => {
     const url = getWeiboFaceUrl(value);
     if (!url) return all;
     const src = srcByUrl[url] || url;
     const safeValue = escapeHtml(value);
     return `<img class="weibo-face" data-value="${safeValue}" alt="[${safeValue}]" src="${escapeHtml(src)}" />`;
   });
+  return wrapUnicodeEmoji(withFaces);
 };

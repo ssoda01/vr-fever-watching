@@ -24,7 +24,29 @@
 
 ## 其他
 
-1. Linux安装Emoji字体文件
+1. 截图 emoji 依赖 **跑 Chromium 的那个环境** 里的字体。官方 Koishi 镜像是 Alpine，宿主机或 `apt` 装的字体进不了容器。
+
+    已有容器里临时安装（装完必须重启容器，让 Chrome 重新读字体）：
+
+    ```bash
+    docker exec -u root -it <koishi容器名> sh -c \
+      "apk add --no-cache font-noto-emoji fontconfig && fc-cache -f"
+    docker restart <koishi容器名>
+    docker exec <koishi容器名> fc-list | grep -i emoji
+    ```
+
+    能看到 `Noto Color Emoji` 或 `Noto Emoji` 才算装上。
+
+    自己基于官方镜像构建时：
+
+    ```dockerfile
+    FROM koishijs/koishi:latest
+    USER root
+    RUN apk add --no-cache font-noto-emoji \
+      && fc-cache -f
+    ```
+
+    非 Docker 的 Linux 宿主机：
 
     ```bash
     # Debian / Ubuntu

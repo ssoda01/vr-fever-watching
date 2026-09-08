@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-vr-fever",
   "description": "自用改型。期间内同博主多条微博&点赞（按发布时间预估点赞），并展示评论；使用指南: `@[机器人] weibo help`",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
