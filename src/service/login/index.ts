@@ -60,7 +60,7 @@ export const getQRcode = async (
   try {
     sendMsg("正在检测微博网络...", session);
     const probe = await probeWeiboNetwork(ctx);
-    if (!probe.ok) {
+    if (probe.ok === false) {
       sendMsg(probe.message, session);
       return false;
     }

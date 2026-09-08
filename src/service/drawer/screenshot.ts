@@ -1,6 +1,9 @@
-import { Context } from "koishi";
+import { Context, h } from "koishi";
 import { CONSTANTS } from "../../util/constants";
-import { ensurePuppeteerBrowser } from "../../util/puppeteer";
+import {
+  ensurePuppeteerBrowser,
+  parsePuppeteerRenderOutput,
+} from "../../util/puppeteer";
 import type { NormalizedPost } from "../timeline/types";
 import {
   buildMultiTimelineHtml,
@@ -83,6 +86,24 @@ const screenshotSelector = async (page: any, selector: string) => {
   return toImageBuffer(output);
 };
 
+const renderSelector = async (page: any, selector: string) => {
+  const buffer = await screenshotSelector(page, selector);
+  if (!buffer) return "";
+  return h.image(buffer, "image/jpeg").toString();
+};
+
+const renderHtmlAsImage = async (
+  ctx: Context,
+  html: string,
+  selector: string,
+) => {
+  const output = await ctx.puppeteer.render(html, async (page) => {
+    return renderSelector(page, selector);
+  });
+  if (!output) return null;
+  return parsePuppeteerRenderOutput(output);
+};
+
 export const drawTimeline = async (
   ctx: Context,
   profile: ProfileData,
@@ -92,10 +113,7 @@ export const drawTimeline = async (
   const { profile: resolvedProfile, timeline: resolvedTimeline, faceSrc } =
     await prepareDrawerAssets(ctx, profile, normalizedTimeline);
   const html = buildTimelineHtml(resolvedProfile, resolvedTimeline, faceSrc);
-  const output = await ctx.puppeteer.render(html, async (page) => {
-    return screenshotSelector(page, ".weibo-card");
-  });
-  return toImageBuffer(output);
+  return renderHtmlAsImage(ctx, html, ".weibo-card");
 };
 
 /** 单个博主截图：微博过多时按 POSTS_PER_SCREENSHOT 条拆成多张图 */
@@ -131,8 +149,5 @@ export const drawTimelines = async (ctx: Context, entries: TimelineEntry[]) => {
     );
   }
   const html = buildMultiTimelineHtml(resolvedEntries);
-  const output = await ctx.puppeteer.render(html, async (page) => {
-    return screenshotSelector(page, "#weibo-cards");
-  });
-  return toImageBuffer(output);
+  return renderHtmlAsImage(ctx, html, "#weibo-cards");
 };
