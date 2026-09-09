@@ -10,7 +10,7 @@ import { createGroupSender, registerWeiboImageRoute } from "./util/send-msg";
 import { getWaitMs } from "./util/timer";
 
 export const name = "vr-fever";
-export type { WeiboCookie, WeiboSubscribe } from "./model";
+export type { WeiboCookie, WeiboLikeCursor, WeiboSubscribe } from "./model";
 
 export const using = ["puppeteer", "database", "http", "server"];
 
